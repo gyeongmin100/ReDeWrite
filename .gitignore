@@ -33,9 +33,14 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+.dev.vars
+.dev.vars.*
 
 # typescript
 *.tsbuildinfo
+
+# Cloudflare
+.wrangler/
 
 # generated native folders
 /ios
