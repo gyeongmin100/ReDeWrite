@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tokens as t } from '../theme/tokens';
-import { mockUser, initialResearches } from '../data/mockData';
 import { supabase } from '../services/supabaseClient';
 
 import AuthScreen from '../screens/AuthScreen';
@@ -25,12 +24,13 @@ const Stack = createNativeStackNavigator();
 
 function buildUserFromSession(session) {
   const email = session.user.email ?? '';
+  const meta = session.user.user_metadata || {};
   return {
     id: session.user.id,
-    name: email ? email.split('@')[0] : '사용자',
+    name: meta.full_name || meta.name || (email ? email.split('@')[0] : '사용자'),
     major: '',
     email,
-    experiences: mockUser.experiences,
+    experiences: [],
   };
 }
 
@@ -90,7 +90,7 @@ function ResearchStack({ researches, updateResearch, addResearch, user }) {
   );
 }
 
-function MainTabs({ researches, updateResearch, addResearch, user, onSignOut }) {
+function MainTabs({ researches, updateResearch, addResearch, user, onSignOut, onUpdateUser }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -135,7 +135,7 @@ function MainTabs({ researches, updateResearch, addResearch, user, onSignOut }) 
         {props => <ArchiveScreen {...props} researches={researches} />}
       </Tab.Screen>
       <Tab.Screen name="MyTab" options={{ title: 'MY' }}>
-        {props => <MyScreen {...props} user={user} onSignOut={onSignOut} />}
+        {props => <MyScreen {...props} user={user} onSignOut={onSignOut} onUpdateUser={onUpdateUser} />}
       </Tab.Screen>
     </Tab.Navigator>
   );
@@ -143,10 +143,27 @@ function MainTabs({ researches, updateResearch, addResearch, user, onSignOut }) 
 
 export default function AppNavigator() {
   const [authedUser, setAuthedUser] = useState(null);
-  const [user, setUser] = useState(mockUser);
-  const [researches, setResearches] = useState(initialResearches);
+  const [user, setUser] = useState({ id: '', name: '', major: '', email: '', experiences: [] });
+  const [researches, setResearches] = useState([]);
 
   const loadUserData = async (userId) => {
+    // profiles 로드
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('name, major, experiences')
+      .eq('id', userId)
+      .single();
+
+    if (profile) {
+      setUser(prev => ({
+        ...prev,
+        name: profile.name || prev.name,
+        major: profile.major || '',
+        experiences: profile.experiences || [],
+      }));
+    }
+
+    // researches 로드
     const { data, error } = await supabase
       .from('researches')
       .select('*')
@@ -257,8 +274,18 @@ export default function AppNavigator() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setAuthedUser(null);
-    setUser(mockUser);
-    setResearches(initialResearches);
+    setUser({ id: '', name: '', major: '', email: '', experiences: [] });
+    setResearches([]);
+  };
+
+  const updateUserExperiences = async (experiences) => {
+    setUser(prev => ({ ...prev, experiences }));
+    if (authedUser) {
+      await supabase
+        .from('profiles')
+        .update({ experiences })
+        .eq('id', authedUser.id);
+    }
   };
 
   if (!authedUser) {
@@ -276,7 +303,7 @@ export default function AppNavigator() {
                       name: u.name,
                       major: u.major,
                       email: u.email,
-                      experiences: mockUser.experiences,
+                      experiences: [],
                     });
                     loadUserData(u.id);
                   }}
@@ -298,6 +325,7 @@ export default function AppNavigator() {
           addResearch={addResearch}
           user={user}
           onSignOut={handleSignOut}
+          onUpdateUser={updateUserExperiences}
         />
       </NavigationContainer>
     </SafeAreaProvider>
