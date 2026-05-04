@@ -2,6 +2,7 @@
   "expo": {
     "name": "ReDeWrite",
     "slug": "ReDeWrite",
+    "scheme": "redewrite",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,14 +17,29 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.im100.redewrite",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true
     },
+    "plugins": [
+      [
+        "expo-web-browser",
+        {
+          "experimentalLauncherActivity": false
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a5e7dae5-23ea-453b-991f-e5b7df04bb6d"
+      }
+    },
+    "owner": "gyeongmin100"
   }
 }
