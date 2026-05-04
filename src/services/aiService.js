@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { normalizeResearchReport } from './researchReportUtils.mjs';
 
 const AI_WORKER_URL = process.env.EXPO_PUBLIC_AI_WORKER_URL;
 
@@ -47,14 +48,11 @@ export async function parseIntent(userInput) {
 
 export async function collectCompanyInfo(company, role) {
   const data = await callWorker('/collect-company-info', { company, role });
-  return {
+  return normalizeResearchReport({
     company,
     role,
-    traits: data.traits ?? [],
-    jdKeywords: data.jdKeywords ?? [],
-    news: data.news ?? [],
-    culture: data.culture ?? [],
-  };
+    ...data,
+  });
 }
 
 export async function runResearch(userInput) {

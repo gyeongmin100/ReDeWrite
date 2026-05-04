@@ -127,7 +127,6 @@ export default function MyScreen({ user, onSignOut, onUpdateUser }) {
 
           <View style={s.footer}>
             <Text style={s.footerLogo}>Re<Text style={{ color: t.primary }}>De</Text>Write</Text>
-            <Text style={s.footerSub}>v2.0 · 인재상 기반 자소서 코파일럿</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -94,7 +94,114 @@ function parseJsonText(rawText) {
     .replace(/```json\n?/g, '')
     .replace(/```\n?/g, '')
     .trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw new Error('AI response was not valid JSON.');
+  }
+}
+
+function asText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function asTextArray(value, maxItems = 8) {
+  if (!Array.isArray(value)) return [];
+  return value.map(asText).filter(Boolean).slice(0, maxItems);
+}
+
+function isHttpUrl(value) {
+  if (!value || typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+function normalizeNews(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(item => ({
+      title: asText(item?.title),
+      summary: asText(item?.summary),
+      date: asText(item?.date),
+      url: isHttpUrl(item?.url) ? item.url.trim() : '',
+      source: asText(item?.source),
+    }))
+    .filter(item => item.title)
+    .slice(0, 5);
+}
+
+function normalizeSources(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  return value
+    .map(item => ({
+      title: asText(item?.title),
+      url: isHttpUrl(item?.url) ? item.url.trim() : '',
+    }))
+    .filter(item => {
+      if (!item.url || seen.has(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function getResponseText(data) {
+  if (typeof data.output_text === 'string') return data.output_text;
+
+  const message = (data.output || []).find(item => item.type === 'message');
+  const textPart = message?.content?.find(part => part.type === 'output_text');
+  return textPart?.text || '';
+}
+
+function getResponseSources(data) {
+  const sources = [];
+
+  for (const item of data.output || []) {
+    if (item.type === 'web_search_call') {
+      for (const source of item.action?.sources || []) {
+        sources.push({ title: source.title, url: source.url });
+      }
+    }
+
+    if (item.type === 'message') {
+      for (const content of item.content || []) {
+        for (const annotation of content.annotations || []) {
+          if (annotation.type === 'url_citation') {
+            sources.push({ title: annotation.title, url: annotation.url });
+          }
+        }
+      }
+    }
+  }
+
+  return normalizeSources(sources);
+}
+
+function normalizeResearchReport(parsed, company, role, fallbackSources = []) {
+  return {
+    company,
+    role,
+    summary: asText(parsed.summary),
+    traits: asTextArray(parsed.traits),
+    jdKeywords: asTextArray(parsed.jdKeywords),
+    businessInsights: asTextArray(parsed.businessInsights),
+    roleFitAnalysis: asTextArray(parsed.roleFitAnalysis),
+    hiringSignals: asTextArray(parsed.hiringSignals),
+    risks: asTextArray(parsed.risks),
+    news: normalizeNews(parsed.news),
+    culture: asTextArray(parsed.culture),
+    sources: normalizeSources(parsed.sources?.length ? parsed.sources : fallbackSources),
+  };
 }
 
 async function handleParseIntent(payload, env) {
@@ -124,36 +231,101 @@ async function handleCollectCompanyInfo(payload, env) {
   const company = requireString(payload.company, 'company', 80);
   const role = requireString(payload.role, 'role', 80);
 
-  const data = await callOpenAI('/chat/completions', {
-    model: 'gpt-4o-mini',
-    response_format: { type: 'json_object' },
-    messages: [
+  const today = new Date().toISOString().slice(0, 10);
+  const data = await callOpenAI('/responses', {
+    model: env.RESEARCH_MODEL || 'gpt-5-mini',
+    tools: [
       {
-        role: 'system',
-        content: `당신은 한국 취업 전문가입니다. 기업과 직무에 대한 정보를 JSON 형식으로만 반환하세요.
-반드시 아래 형식을 정확히 따르세요:
-{
-  "traits": ["인재상 키워드 4-6개"],
-  "jdKeywords": ["직무 핵심역량 4-6개"],
-  "news": [{"title": "기업 관련 주요 동향 제목", "summary": "한 줄 요약", "date": "2024.XX.XX"}],
-  "culture": ["조직문화 키워드 3-5개"]
-}
-news는 반드시 3건 포함하세요.`,
-      },
-      {
-        role: 'user',
-        content: `${company}의 ${role} 직무에 대한 인재상, JD 핵심역량, 최근 알려진 기업 동향(뉴스 3건), 조직문화를 알려주세요.`,
+        type: 'web_search',
+        user_location: {
+          type: 'approximate',
+          country: 'KR',
+          timezone: 'Asia/Seoul',
+        },
       },
     ],
+    tool_choice: 'auto',
+    include: ['web_search_call.action.sources'],
+    instructions: `당신은 한국 취업 시장과 기업 분석에 강한 리서치 컨설턴트입니다.
+반드시 최신 웹 검색 결과를 근거로 ${today} 기준 리서치를 작성하세요.
+추측과 일반론을 줄이고, 지원자가 자기소개서와 면접 준비에 바로 쓸 수 있는 분석을 제공하세요.
+반환은 JSON 하나만 허용합니다. 뉴스에는 실제 기사 또는 출처 페이지 URL을 포함하세요.`,
+    input: `${company}의 ${role} 직무 지원자를 위한 전문 기업 리서치를 작성하세요.
+포함할 내용:
+- 기업/사업 방향 요약
+- 인재상 키워드와 직무 핵심역량
+- 최근 12개월 중심 뉴스 3~5건. 각 뉴스는 title, summary, date, source, url 포함
+- 사업/시장 인사이트
+- ${role} 직무와 연결되는 지원 전략
+- 채용에서 강조할 신호
+- 지원자가 조심해야 할 리스크
+- 조직문화 키워드
+- 사용한 주요 출처`,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'company_research_report',
+        strict: true,
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'summary',
+            'traits',
+            'jdKeywords',
+            'businessInsights',
+            'roleFitAnalysis',
+            'hiringSignals',
+            'risks',
+            'news',
+            'culture',
+            'sources',
+          ],
+          properties: {
+            summary: { type: 'string' },
+            traits: { type: 'array', items: { type: 'string' } },
+            jdKeywords: { type: 'array', items: { type: 'string' } },
+            businessInsights: { type: 'array', items: { type: 'string' } },
+            roleFitAnalysis: { type: 'array', items: { type: 'string' } },
+            hiringSignals: { type: 'array', items: { type: 'string' } },
+            risks: { type: 'array', items: { type: 'string' } },
+            news: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['title', 'summary', 'date', 'source', 'url'],
+                properties: {
+                  title: { type: 'string' },
+                  summary: { type: 'string' },
+                  date: { type: 'string' },
+                  source: { type: 'string' },
+                  url: { type: 'string' },
+                },
+              },
+            },
+            culture: { type: 'array', items: { type: 'string' } },
+            sources: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['title', 'url'],
+                properties: {
+                  title: { type: 'string' },
+                  url: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   }, env);
 
-  const parsed = JSON.parse(data.choices[0].message.content);
-  return {
-    traits: Array.isArray(parsed.traits) ? parsed.traits.slice(0, 8) : [],
-    jdKeywords: Array.isArray(parsed.jdKeywords) ? parsed.jdKeywords.slice(0, 8) : [],
-    news: Array.isArray(parsed.news) ? parsed.news.slice(0, 3) : [],
-    culture: Array.isArray(parsed.culture) ? parsed.culture.slice(0, 8) : [],
-  };
+  const fallbackSources = getResponseSources(data);
+  const parsed = parseJsonText(getResponseText(data));
+  return normalizeResearchReport(parsed, company, role, fallbackSources);
 }
 
 async function handleChat(payload, env) {
