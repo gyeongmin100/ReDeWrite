@@ -87,7 +87,7 @@ export default function WriteScreen({ navigation, route, researches, updateResea
       ...(hasDraft
         ? {
             pipeline: ['done', 'done', 'done'],
-            completedSteps: Math.max(research?.completedSteps ?? 1, 6),
+            completedSteps: Math.max(research?.completedSteps ?? 0, 3),
           }
         : {}),
     });
@@ -574,7 +574,6 @@ export default function WriteScreen({ navigation, route, researches, updateResea
                 <Text style={s.darkBtnText}>공유</Text>
               </TouchableOpacity>
             </View>
-            {copied && <Text style={s.copiedText}>복사됨</Text>}
           </>
         )}
       </ScrollView>

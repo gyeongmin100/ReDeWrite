@@ -60,11 +60,11 @@ export default function HomeScreen({ navigation, user, researches }) {
             })}
             activeOpacity={0.85}
           >
-            <Text style={s.featuredMeta}>◎ {featured.completedSteps}/6단계 진행 중</Text>
+            <Text style={s.featuredMeta}>◎ {Math.min(featured.completedSteps, 3)}/3단계 진행 중</Text>
             <Text style={s.featuredName}>{featured.name}</Text>
             <Text style={s.featuredRole}>{featured.role}</Text>
             <View style={s.progressRow}>
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: 3 }).map((_, i) => (
                 <View
                   key={i}
                   style={[s.progressDot, { backgroundColor: i < featured.completedSteps ? '#fff' : 'rgba(255,255,255,0.25)' }]}

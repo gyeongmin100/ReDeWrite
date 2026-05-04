@@ -47,10 +47,10 @@ export default function ResearchScreen({ navigation, route, researches }) {
         <View style={s.progressCard}>
           <View style={s.progressHeader}>
             <Text style={s.progressLabel}>전체 진행도</Text>
-            <Text style={s.progressCount}>{research.completedSteps}/6</Text>
+            <Text style={s.progressCount}>{Math.min(research.completedSteps, 3)}/3</Text>
           </View>
           <View style={s.progressRow}>
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <View
                 key={i}
                 style={[s.progressBar, { backgroundColor: i < research.completedSteps ? t.primary : t.surfaceAlt }]}

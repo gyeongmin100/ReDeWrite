@@ -18,7 +18,6 @@ import ResearchScreen from '../screens/ResearchScreen';
 import ReadScreen from '../screens/ReadScreen';
 import DebateScreen from '../screens/DebateScreen';
 import WriteScreen from '../screens/WriteScreen';
-import ArchiveScreen from '../screens/ArchiveScreen';
 import MyScreen from '../screens/MyScreen';
 
 const Tab = createBottomTabNavigator();
@@ -140,7 +139,6 @@ function MainTabs({
           const icons = {
             HomeTab: focused ? 'home' : 'home-outline',
             ResearchTab: focused ? 'layers' : 'layers-outline',
-            ArchiveTab: focused ? 'document-text' : 'document-text-outline',
             MyTab: focused ? 'person' : 'person-outline',
           };
           return <Ionicons name={icons[route.name]} size={22} color={color} />;
@@ -180,9 +178,6 @@ function MainTabs({
             user={user}
           />
         )}
-      </Tab.Screen>
-      <Tab.Screen name="ArchiveTab" options={{ title: '자소서함' }}>
-        {props => <ArchiveScreen {...props} researches={researches} />}
       </Tab.Screen>
       <Tab.Screen name="MyTab" options={{ title: 'MY' }}>
         {props => <MyScreen {...props} user={user} onSignOut={onSignOut} onUpdateUser={onUpdateUser} />}

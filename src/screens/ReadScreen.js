@@ -87,7 +87,7 @@ export default function ReadScreen({
   const handleDebate = () => {
     updateResearch(companyId, {
       pipeline: ['done', 'active', 'pending'],
-      completedSteps: Math.max(research?.completedSteps ?? 1, 2),
+      completedSteps: Math.max(research?.completedSteps ?? 0, 1),
     });
     navigation.navigate('Debate', { companyId });
   };

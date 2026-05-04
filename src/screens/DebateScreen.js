@@ -75,7 +75,7 @@ export default function DebateScreen({ navigation, route, researches, updateRese
     updateResearch(companyId, {
       bestFit: { messages },
       pipeline: ['done', 'done', 'active'],
-      completedSteps: Math.max(research?.completedSteps ?? 1, 4),
+      completedSteps: Math.max(research?.completedSteps ?? 0, 2),
     });
     navigation.navigate('Write', { companyId });
   };
