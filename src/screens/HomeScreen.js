@@ -44,7 +44,7 @@ export default function HomeScreen({ navigation, user, researches }) {
         {/* Search bar */}
         <TouchableOpacity style={s.searchBar} onPress={() => navigation.getParent()?.navigate('ResearchTab', { screen: 'Search' })} activeOpacity={0.7}>
           <Ionicons name="search-outline" size={17} color={t.faint} />
-          <Text style={s.searchText}>기업명을 검색해보세요</Text>
+          <Text style={s.searchText}>지원할 기업과 직무를 입력하세요</Text>
         </TouchableOpacity>
 
         {/* Section label */}

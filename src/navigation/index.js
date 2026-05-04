@@ -44,11 +44,18 @@ function HomeStack({ researches, user }) {
   );
 }
 
-function ResearchStack({ researches, updateResearch, addResearch, user }) {
+function ResearchStack({ researches, updateResearch, addResearch, deleteResearch, user }) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ResearchList">
-        {props => <ResearchListScreen {...props} researches={researches} user={user} />}
+        {props => (
+          <ResearchListScreen
+            {...props}
+            researches={researches}
+            deleteResearch={deleteResearch}
+            user={user}
+          />
+        )}
       </Stack.Screen>
       <Stack.Screen name="Search">
         {props => <SearchScreen {...props} addResearch={addResearch} />}
@@ -90,7 +97,7 @@ function ResearchStack({ researches, updateResearch, addResearch, user }) {
   );
 }
 
-function MainTabs({ researches, updateResearch, addResearch, user, onSignOut, onUpdateUser }) {
+function MainTabs({ researches, updateResearch, addResearch, deleteResearch, user, onSignOut, onUpdateUser }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -118,15 +125,34 @@ function MainTabs({ researches, updateResearch, addResearch, user, onSignOut, on
         },
       })}
     >
-      <Tab.Screen name="HomeTab" options={{ title: '홈' }}>
+      <Tab.Screen
+        name="HomeTab"
+        options={{ title: '홈' }}
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            event.preventDefault();
+            navigation.navigate('HomeTab', { screen: 'Home' });
+          },
+        })}
+      >
         {() => <HomeStack researches={researches} user={user} />}
       </Tab.Screen>
-      <Tab.Screen name="ResearchTab" options={{ title: '리서치' }}>
+      <Tab.Screen
+        name="ResearchTab"
+        options={{ title: '리서치' }}
+        listeners={({ navigation }) => ({
+          tabPress: (event) => {
+            event.preventDefault();
+            navigation.navigate('ResearchTab', { screen: 'ResearchList' });
+          },
+        })}
+      >
         {() => (
           <ResearchStack
             researches={researches}
             updateResearch={updateResearch}
             addResearch={addResearch}
+            deleteResearch={deleteResearch}
             user={user}
           />
         )}
@@ -273,6 +299,20 @@ export default function AppNavigator() {
     }
   };
 
+  const deleteResearch = (companyId) => {
+    setResearches(prev => prev.filter(r => r.companyId !== companyId));
+
+    if (authedUser) {
+      supabase.from('researches')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('user_id', authedUser.id)
+        .then(({ error }) => {
+          if (error) console.warn('Research delete error:', error.message);
+        });
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setAuthedUser(null);
@@ -325,6 +365,7 @@ export default function AppNavigator() {
           researches={researches}
           updateResearch={updateResearch}
           addResearch={addResearch}
+          deleteResearch={deleteResearch}
           user={user}
           onSignOut={handleSignOut}
           onUpdateUser={updateUserExperiences}

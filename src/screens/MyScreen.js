@@ -6,34 +6,50 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
+import {
+  getNextEditingIndexAfterDelete,
+  getSavedExperiences,
+} from '../services/experienceEditorUtils.mjs';
 
 export default function MyScreen({ user, onSignOut, onUpdateUser }) {
   const [addingExp, setAddingExp] = useState(false);
-  const [newExpText, setNewExpText] = useState('');
+  const [draftText, setDraftText] = useState('');
   const [editingIdx, setEditingIdx] = useState(null);
 
   const handleSaveExp = async () => {
-    if (!newExpText.trim()) return;
-    let updated;
-    if (editingIdx !== null) {
-      updated = user.experiences.map((e, i) => i === editingIdx ? newExpText.trim() : e);
-    } else {
-      updated = [...user.experiences, newExpText.trim()];
-    }
+    if (!draftText.trim()) return;
+    const updated = getSavedExperiences(user.experiences, editingIdx, draftText);
     setAddingExp(false);
     setEditingIdx(null);
-    setNewExpText('');
+    setDraftText('');
     if (onUpdateUser) onUpdateUser(updated);
   };
 
   const handleEditExp = (idx) => {
     setEditingIdx(idx);
-    setNewExpText(user.experiences[idx]);
+    setDraftText(user.experiences[idx]);
+    setAddingExp(false);
+  };
+
+  const handleAddExp = () => {
     setAddingExp(true);
+    setEditingIdx(null);
+    setDraftText('');
+  };
+
+  const handleCancelEdit = () => {
+    setAddingExp(false);
+    setEditingIdx(null);
+    setDraftText('');
   };
 
   const handleDeleteExp = (idx) => {
     const updated = user.experiences.filter((_, i) => i !== idx);
+    const nextEditingIdx = getNextEditingIndexAfterDelete(editingIdx, idx);
+    setEditingIdx(nextEditingIdx);
+    if (nextEditingIdx === null) {
+      setDraftText('');
+    }
     if (onUpdateUser) onUpdateUser(updated);
   };
 
@@ -62,57 +78,86 @@ export default function MyScreen({ user, onSignOut, onUpdateUser }) {
           <Text style={s.sectionLabel}>내 경험 라이브러리</Text>
           <View style={s.expCard}>
             {user.experiences.map((e, i, arr) => (
-              <View key={i} style={[s.expRow, i < arr.length - 1 && s.expBorder]}>
-                <Text style={s.expNum}>{String(i + 1).padStart(2, '0')}</Text>
-                <Text style={[s.expText, { flex: 1 }]}>{e}</Text>
-                <TouchableOpacity onPress={() => handleEditExp(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="pencil-outline" size={15} color={t.muted} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteExp(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 10 }}>
-                  <Ionicons name="trash-outline" size={15} color={t.danger} />
-                </TouchableOpacity>
+              <View
+                key={`${e}-${i}`}
+                style={[
+                  s.expRow,
+                  (i < arr.length - 1 || addingExp) && s.expBorder,
+                  editingIdx === i && s.expRowEditing,
+                ]}
+              >
+                {editingIdx === i ? (
+                  <>
+                    <Text style={s.expNum}>{String(i + 1).padStart(2, '0')}</Text>
+                    <TextInput
+                      style={s.expInput}
+                      value={draftText}
+                      onChangeText={setDraftText}
+                      multiline
+                      autoFocus
+                      placeholder="역할, 성과, 수치를 함께 적어주세요"
+                      placeholderTextColor={t.faint}
+                    />
+                    <View style={s.inlineActions}>
+                      <TouchableOpacity onPress={handleCancelEdit} style={s.iconBtn}>
+                        <Ionicons name="close" size={16} color={t.muted} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleSaveExp}
+                        style={[s.iconBtn, !draftText.trim() && s.btnDisabled]}
+                        disabled={!draftText.trim()}
+                      >
+                        <Ionicons name="checkmark" size={17} color={t.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={s.expNum}>{String(i + 1).padStart(2, '0')}</Text>
+                    <Text style={[s.expText, { flex: 1 }]}>{e}</Text>
+                    <TouchableOpacity onPress={() => handleEditExp(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="pencil-outline" size={15} color={t.muted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteExp(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 10 }}>
+                      <Ionicons name="trash-outline" size={15} color={t.danger} />
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             ))}
+
+            {addingExp && (
+              <View style={[s.expRow, s.expRowEditing]}>
+                <Text style={s.expNum}>{String(user.experiences.length + 1).padStart(2, '0')}</Text>
+                <TextInput
+                  style={s.expInput}
+                  placeholder="역할, 성과, 수치를 함께 적어주세요"
+                  placeholderTextColor={t.faint}
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  multiline
+                  autoFocus
+                />
+                <View style={s.inlineActions}>
+                  <TouchableOpacity onPress={handleCancelEdit} style={s.iconBtn}>
+                    <Ionicons name="close" size={16} color={t.muted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.iconBtn, !draftText.trim() && s.btnDisabled]}
+                    onPress={handleSaveExp}
+                    disabled={!draftText.trim()}
+                  >
+                    <Ionicons name="checkmark" size={17} color={t.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
 
-          {addingExp ? (
-            <View style={s.addExpContainer}>
-              <Text style={s.sectionLabel}>{editingIdx !== null ? '경험 수정' : '새 경험 추가'}</Text>
-              <TextInput
-                style={s.addExpInput}
-                placeholder="경험을 입력하세요 (역할, 성과, 수치 포함)"
-                placeholderTextColor={t.faint}
-                value={newExpText}
-                onChangeText={setNewExpText}
-                multiline
-                autoFocus
-              />
-              <View style={s.addExpActions}>
-                <TouchableOpacity
-                  style={s.cancelBtn}
-                  onPress={() => {
-                    setAddingExp(false);
-                    setEditingIdx(null);
-                    setNewExpText('');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={s.cancelBtnText}>취소</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.saveBtn, !newExpText.trim() && s.btnDisabled]}
-                  onPress={handleSaveExp}
-                  disabled={!newExpText.trim()}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.saveBtnText}>저장</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
+          {!addingExp && editingIdx === null && (
             <TouchableOpacity
               style={s.addBtn}
-              onPress={() => setAddingExp(true)}
+              onPress={handleAddExp}
               activeOpacity={0.8}
             >
               <Ionicons name="add" size={16} color={t.ink} />
@@ -148,56 +193,28 @@ const s = StyleSheet.create({
   sectionLabel: { fontSize: 12, fontWeight: '700', color: t.muted, letterSpacing: 0.8, marginBottom: 10 },
   expCard: { backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.border, marginBottom: 12, overflow: 'hidden' },
   expRow: { flexDirection: 'row', gap: 10, padding: 14 },
+  expRowEditing: { backgroundColor: t.surfaceAlt, alignItems: 'flex-start' },
   expBorder: { borderBottomWidth: 1, borderBottomColor: t.border },
   expNum: { fontSize: 11, color: t.faint, marginTop: 1, minWidth: 20 },
   expText: { flex: 1, fontSize: 12, color: t.inkSoft, lineHeight: 20 },
+  expInput: {
+    flex: 1,
+    minHeight: 64,
+    maxHeight: 120,
+    fontSize: 12,
+    color: t.ink,
+    lineHeight: 20,
+    textAlignVertical: 'top',
+    padding: 0,
+  },
+  inlineActions: { flexDirection: 'row', gap: 6, marginTop: -4 },
+  iconBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   addBtn: {
     height: 44, borderRadius: 14, backgroundColor: t.surface,
     borderWidth: 1, borderColor: t.borderStrong,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 22,
   },
   addBtnText: { fontSize: 14, fontWeight: '600', color: t.ink },
-  addExpContainer: {
-    backgroundColor: t.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: t.borderStrong,
-    padding: 14,
-    marginBottom: 22,
-    gap: 10,
-  },
-  addExpInput: {
-    fontSize: 13,
-    color: t.ink,
-    lineHeight: 20,
-    minHeight: 72,
-    textAlignVertical: 'top',
-  },
-  addExpActions: {
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'flex-end',
-  },
-  cancelBtn: {
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: t.bg,
-    borderWidth: 1,
-    borderColor: t.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtnText: { fontSize: 13, color: t.muted, fontWeight: '600' },
-  saveBtn: {
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: t.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveBtnText: { fontSize: 13, color: '#fff', fontWeight: '700' },
   btnDisabled: { opacity: 0.5 },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
   signOutText: { fontSize: 13, color: t.danger, fontWeight: '600' },

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,7 +39,22 @@ function PipelineDots({ pipeline }) {
   );
 }
 
-export default function ResearchListScreen({ navigation, researches, user }) {
+export default function ResearchListScreen({ navigation, researches, deleteResearch, user }) {
+  const confirmDelete = (research) => {
+    Alert.alert(
+      '리서치 삭제',
+      `${research.name} 리서치 내역을 삭제할까요? 저장된 리포트와 자소서 초안도 함께 삭제됩니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: () => deleteResearch?.(research.companyId),
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={s.root}>
       <View style={s.inner}>
@@ -89,6 +104,13 @@ export default function ResearchListScreen({ navigation, researches, user }) {
                     <Text style={s.companyName}>{r.name}</Text>
                     <Text style={s.roleText} numberOfLines={1}>{r.role}</Text>
                   </View>
+                  <TouchableOpacity
+                    style={s.deleteBtn}
+                    onPress={() => confirmDelete(r)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={17} color={t.danger} />
+                  </TouchableOpacity>
                   <Ionicons name="chevron-forward" size={16} color={t.faint} />
                 </View>
                 <View style={s.pipelineWrap}>
@@ -126,6 +148,7 @@ const s = StyleSheet.create({
   logoText: { fontSize: 16, fontWeight: '700', color: t.primary },
   companyName: { fontSize: 14, fontWeight: '700', color: t.ink, marginBottom: 2 },
   roleText: { fontSize: 12, color: t.muted },
+  deleteBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
   // 파이프라인 dots
   pipelineWrap: { paddingTop: 4, borderTopWidth: 1, borderTopColor: t.border },

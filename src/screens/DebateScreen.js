@@ -7,12 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 import { chatWithAI } from '../services/aiService';
-
-function buildQuickChips(traits = []) {
-  const traitChips = traits.slice(0, 3).map(trait => `"${trait}" 관련 경험 매핑`);
-  const fixed = ['자기소개서 소재 찾기', '약점 방어 전략', '예상 면접 질문'];
-  return [...traitChips, ...fixed];
-}
+import { buildQuickChips } from '../services/debateQuickChips.mjs';
 
 export default function DebateScreen({ navigation, route, researches, updateResearch, user }) {
   const { companyId } = route.params;
@@ -26,7 +21,7 @@ export default function DebateScreen({ navigation, route, researches, updateRese
     content: `${company} ${role} 리서치 완료!\n어떤 걸 먼저 분석할까요?`,
   };
 
-  const quickChips = buildQuickChips(report?.traits ?? []);
+  const quickChips = buildQuickChips();
 
   const [messages, setMessages] = useState([initialMsg]);
   const [input, setInput] = useState('');

@@ -9,10 +9,10 @@ import { tokens as t } from '../theme/tokens';
 import { runResearch } from '../services/aiService';
 
 const HINT_CHIPS = [
-  '삼성전자 SW 직군',
-  '카카오 개발자',
-  '현대차 생산직',
-  'LG전자 연구직',
+  '네이버 서비스기획 인턴',
+  '삼성전자 회로설계',
+  '현대차 생산관리',
+  '카카오 백엔드 개발',
 ];
 
 export default function SearchScreen({ navigation, addResearch }) {
@@ -54,7 +54,7 @@ export default function SearchScreen({ navigation, addResearch }) {
             style={s.input}
             value={query}
             onChangeText={setQuery}
-            placeholder="어떤 회사 취업하고 싶어요?"
+            placeholder="예: 네이버 서비스기획 인턴"
             placeholderTextColor={t.faint}
             autoFocus
             editable={!loading}
@@ -69,7 +69,7 @@ export default function SearchScreen({ navigation, addResearch }) {
         </View>
 
         {/* 힌트 칩 */}
-        <Text style={s.label}>빠른 선택</Text>
+        <Text style={s.label}>입력 예시</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}

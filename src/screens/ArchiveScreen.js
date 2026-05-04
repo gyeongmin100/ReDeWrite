@@ -21,28 +21,30 @@ export default function ArchiveScreen({ navigation, researches }) {
             <Text style={s.emptyIcon}>✍︎</Text>
             <Text style={s.emptyTitle}>아직 저장된 자소서가 없어요</Text>
             <Text style={s.emptySub}>리서치를 진행하면 여기에 모입니다</Text>
-            <TouchableOpacity style={s.newBtn} onPress={() => navigation.navigate('HomeTab', { screen: 'Search' })} activeOpacity={0.85}>
-              <Ionicons name="add" size={16} color="#fff" />
-              <Text style={s.newBtnText}>새 리서치</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           <View style={{ gap: 10 }}>
             {withEssay.map(r => {
               const c = mockCompanies.find(c => c.id === r.companyId);
+              const company = c ?? {
+                name: r.name,
+                color: t.primaryLight,
+                textColor: t.primary,
+                logo: r.name?.charAt(0) ?? 'R',
+              };
               return (
                 <TouchableOpacity
                   key={r.companyId}
                   style={s.card}
-                  onPress={() => navigation.navigate('HomeTab', { screen: 'Write', params: { companyId: r.companyId } })}
+                  onPress={() => navigation.navigate('ResearchTab', { screen: 'Write', params: { companyId: r.companyId } })}
                   activeOpacity={0.75}
                 >
                   <View style={s.cardHeader}>
-                    <View style={[s.logo, { backgroundColor: c.color }]}>
-                      <Text style={[s.logoText, { color: c.textColor }]}>{c.logo}</Text>
+                    <View style={[s.logo, { backgroundColor: company.color }]}>
+                      <Text style={[s.logoText, { color: company.textColor }]}>{company.logo}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.companyName}>{c.name}</Text>
+                      <Text style={s.companyName}>{company.name}</Text>
                       <Text style={s.essayMeta}>{r.essay.questionId} · {r.essay.draft.length}자</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={t.faint} />
@@ -69,9 +71,7 @@ const s = StyleSheet.create({
   },
   emptyIcon: { fontSize: 30, marginBottom: 8 },
   emptyTitle: { fontSize: 13, fontWeight: '600', color: t.ink, marginBottom: 6 },
-  emptySub: { fontSize: 12, color: t.muted, marginBottom: 14 },
-  newBtn: { height: 36, borderRadius: 10, backgroundColor: t.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 6 },
-  newBtnText: { fontSize: 13, fontWeight: '600', color: '#fff' },
+  emptySub: { fontSize: 12, color: t.muted },
   card: { backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.border, padding: 14 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   logo: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
