@@ -10,14 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { tokens as t } from '../theme/tokens';
 import { supabase } from '../services/supabaseClient';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const redirectTo = Linking.createURL('auth/callback');
+const redirectTo = 'redewrite://auth/callback';
 
 function mapSessionToUser(session) {
   const email = session.user.email ?? '';
