@@ -125,7 +125,7 @@ async function handleCollectCompanyInfo(payload, env) {
   const role = requireString(payload.role, 'role', 80);
 
   const data = await callOpenAI('/responses', {
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     tools: [{ type: 'web_search_preview' }],
     input: `${company} ${role} 관련 인재상, JD 핵심 역량, 최근 뉴스 3건, 조직문화를 조사해서 아래 JSON 형식으로만 반환하세요.
 {

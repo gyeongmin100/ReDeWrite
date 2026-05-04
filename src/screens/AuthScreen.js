@@ -23,9 +23,10 @@ GoogleSignin.configure({
 
 function mapSessionToUser(session) {
   const email = session.user.email ?? '';
+  const meta = session.user.user_metadata || {};
   return {
     id: session.user.id,
-    name: email ? email.split('@')[0] : '사용자',
+    name: meta.full_name || meta.name || (email ? email.split('@')[0] : '사용자'),
     major: '',
     email,
     experiences: [],
