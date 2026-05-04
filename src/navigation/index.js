@@ -8,6 +8,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { tokens as t } from '../theme/tokens';
 import { supabase } from '../services/supabaseClient';
 import { runResearch } from '../services/aiService';
+import { buildProfileUpsertPayload } from '../services/profilePersistence.mjs';
 
 import AuthScreen from '../screens/AuthScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -198,11 +199,15 @@ export default function AppNavigator() {
 
   const loadUserData = async (userId) => {
     // profiles 로드
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('name, major, experiences')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
+
+    if (profileError) {
+      console.warn('Profile load error:', profileError.message);
+    }
 
     if (profile) {
       setUser(prev => ({
@@ -456,10 +461,18 @@ export default function AppNavigator() {
   const updateUserExperiences = async (experiences) => {
     setUser(prev => ({ ...prev, experiences }));
     if (authedUser) {
-      await supabase
+      const payload = buildProfileUpsertPayload({
+        ...user,
+        id: authedUser.id,
+        experiences,
+      });
+      const { error } = await supabase
         .from('profiles')
-        .update({ experiences })
-        .eq('id', authedUser.id);
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Profile save error:', error.message);
+      }
     }
   };
 

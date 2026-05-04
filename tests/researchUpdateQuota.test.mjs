@@ -17,15 +17,15 @@ test('countMonthlyResearchUpdates counts current month updates across all resear
   assert.equal(countMonthlyResearchUpdates(researches, new Date('2026-05-05T00:00:00.000Z')), 2);
 });
 
-test('canUseResearchUpdate allows less than five current month updates only', () => {
+test('canUseResearchUpdate allows less than ten current month updates only', () => {
   const makeResearch = (count) => ({
     researchReport: {
       updateHistory: Array.from({ length: count }, (_, index) => `2026-05-0${index + 1}T00:00:00.000Z`),
     },
   });
 
-  assert.equal(canUseResearchUpdate([makeResearch(4)], new Date('2026-05-05T00:00:00.000Z')), true);
-  assert.equal(canUseResearchUpdate([makeResearch(5)], new Date('2026-05-05T00:00:00.000Z')), false);
+  assert.equal(canUseResearchUpdate([makeResearch(9)], new Date('2026-05-10T00:00:00.000Z')), true);
+  assert.equal(canUseResearchUpdate([makeResearch(10)], new Date('2026-05-10T00:00:00.000Z')), false);
 });
 
 test('appendResearchUpdateHistory preserves report fields and appends timestamp', () => {

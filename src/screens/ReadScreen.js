@@ -103,8 +103,28 @@ export default function ReadScreen({
           <Text style={s.tag}>READ · 기업 리포트</Text>
         </View>
 
-        <Text style={s.companyName}>{companyName}</Text>
+        <View style={s.companyRow}>
+          <Text style={s.companyName}>{companyName}</Text>
+          {report && (
+            <TouchableOpacity
+              style={[s.updateMiniBtn, (!canUpdate || loading) && s.updateBtnDisabled]}
+              onPress={handleUpdateReport}
+              disabled={!canUpdate || loading}
+              activeOpacity={0.75}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={t.faint} />
+              ) : (
+                <Ionicons name="refresh" size={14} color={t.faint} />
+              )}
+              <Text style={s.updateMiniText}>업데이트</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={s.role}>{role}</Text>
+        {report && (
+          <Text style={s.updateMiniSub}>월 10회 중 {remainingUpdates}회 남음</Text>
+        )}
 
         {loading && (
           <View style={s.loadingNotice}>
@@ -153,32 +173,8 @@ export default function ReadScreen({
         {/* 리포트 있을 때 */}
         {report && (
           <>
-            <View style={s.updateRow}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.updateTitle}>최신 리서치</Text>
-                <Text style={s.updateSub}>
-                  이번 달 업데이트 {remainingUpdates}회 남음
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[s.updateBtn, (!canUpdate || loading) && s.updateBtnDisabled]}
-                onPress={handleUpdateReport}
-                disabled={!canUpdate || loading}
-                activeOpacity={0.8}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons name="refresh" size={15} color="#fff" />
-                    <Text style={s.updateBtnText}>최신정보 업데이트</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-
             {!canUpdate && (
-              <Text style={s.limitText}>이번 달 업데이트 5회를 모두 사용했어요.</Text>
+              <Text style={s.limitText}>월 업데이트 한도를 모두 사용했어요.</Text>
             )}
 
             {report.summary && (
@@ -291,8 +287,17 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 14, marginBottom: 14 },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   tag: { fontSize: 10, fontWeight: '700', color: t.primary, letterSpacing: 1.2 },
-  companyName: { fontSize: 24, fontWeight: '700', color: t.ink, letterSpacing: -0.5, marginBottom: 6 },
-  role: { fontSize: 12, color: t.muted, marginBottom: 22 },
+  companyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  companyName: { flex: 1, minWidth: 0, fontSize: 24, fontWeight: '700', color: t.ink, letterSpacing: -0.5 },
+  role: { fontSize: 12, color: t.muted, marginBottom: 4 },
+  updateMiniBtn: {
+    minHeight: 28, borderRadius: 999, paddingHorizontal: 8,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.55)', borderWidth: 1, borderColor: t.border,
+    flexShrink: 0,
+  },
+  updateMiniText: { fontSize: 11, fontWeight: '600', color: t.faint },
+  updateMiniSub: { fontSize: 11, color: t.faint, marginBottom: 16 },
   loadingNotice: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: t.primarySoft, borderRadius: 12, borderWidth: 1, borderColor: t.primaryLight,
@@ -310,20 +315,7 @@ const s = StyleSheet.create({
   insightRow: { flexDirection: 'row', gap: 8 },
   insightBullet: { fontSize: 13, color: t.primary, lineHeight: 20 },
   insightText: { flex: 1, minWidth: 0, fontSize: 12, color: t.inkSoft, lineHeight: 20 },
-  updateRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.border,
-    padding: 14, marginBottom: 8,
-  },
-  updateTitle: { fontSize: 12, fontWeight: '700', color: t.ink, marginBottom: 3 },
-  updateSub: { fontSize: 11, color: t.muted },
-  updateBtn: {
-    minHeight: 38, borderRadius: 10, paddingHorizontal: 12,
-    backgroundColor: t.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    flexShrink: 0,
-  },
   updateBtnDisabled: { opacity: 0.45 },
-  updateBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   limitText: { fontSize: 12, color: t.warn, marginBottom: 12, lineHeight: 18 },
 
   // 칩

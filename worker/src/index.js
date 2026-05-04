@@ -132,8 +132,6 @@ function normalizeNews(value) {
       title: asText(item?.title),
       summary: asText(item?.summary),
       date: asText(item?.date),
-      url: isHttpUrl(item?.url) ? item.url.trim() : '',
-      source: asText(item?.source),
     }))
     .filter(item => item.title)
     .slice(0, 5);
@@ -200,7 +198,6 @@ function normalizeResearchReport(parsed, company, role, fallbackSources = []) {
     risks: asTextArray(parsed.risks),
     news: normalizeNews(parsed.news),
     culture: asTextArray(parsed.culture),
-    sources: normalizeSources(parsed.sources?.length ? parsed.sources : fallbackSources),
   };
 }
 
@@ -245,22 +242,20 @@ async function handleCollectCompanyInfo(payload, env) {
       },
     ],
     tool_choice: 'auto',
-    include: ['web_search_call.action.sources'],
     instructions: `당신은 한국 취업 시장과 기업 분석에 강한 리서치 컨설턴트입니다.
 반드시 최신 웹 검색 결과를 근거로 ${today} 기준 리서치를 작성하세요.
 추측과 일반론을 줄이고, 지원자가 자기소개서와 면접 준비에 바로 쓸 수 있는 분석을 제공하세요.
-반환은 JSON 하나만 허용합니다. 뉴스에는 실제 기사 또는 출처 페이지 URL을 포함하세요.`,
+반환은 JSON 하나만 허용합니다. URL, 링크, 출처명, 언론사명은 결과 JSON에 포함하지 마세요.`,
     input: `${company}의 ${role} 직무 지원자를 위한 전문 기업 리서치를 작성하세요.
 포함할 내용:
 - 기업/사업 방향 요약
 - 인재상 키워드와 직무 핵심역량
-- 최근 12개월 중심 뉴스 3~5건. 각 뉴스는 title, summary, date, source, url 포함
+- 최근 12개월 중심 뉴스 3~5건. 각 뉴스는 title, summary, date만 포함
 - 사업/시장 인사이트
 - ${role} 직무와 연결되는 지원 전략
 - 채용에서 강조할 신호
 - 지원자가 조심해야 할 리스크
-- 조직문화 키워드
-- 사용한 주요 출처`,
+- 조직문화 키워드`,
     text: {
       format: {
         type: 'json_schema',
@@ -279,7 +274,6 @@ async function handleCollectCompanyInfo(payload, env) {
             'risks',
             'news',
             'culture',
-            'sources',
           ],
           properties: {
             summary: { type: 'string' },
@@ -294,38 +288,23 @@ async function handleCollectCompanyInfo(payload, env) {
               items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['title', 'summary', 'date', 'source', 'url'],
+                required: ['title', 'summary', 'date'],
                 properties: {
                   title: { type: 'string' },
                   summary: { type: 'string' },
                   date: { type: 'string' },
-                  source: { type: 'string' },
-                  url: { type: 'string' },
                 },
               },
             },
             culture: { type: 'array', items: { type: 'string' } },
-            sources: {
-              type: 'array',
-              items: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['title', 'url'],
-                properties: {
-                  title: { type: 'string' },
-                  url: { type: 'string' },
-                },
-              },
-            },
           },
         },
       },
     },
   }, env);
 
-  const fallbackSources = getResponseSources(data);
   const parsed = parseJsonText(getResponseText(data));
-  return normalizeResearchReport(parsed, company, role, fallbackSources);
+  return normalizeResearchReport(parsed, company, role);
 }
 
 async function handleChat(payload, env) {

@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   normalizeResearchReport,
-  getNewsTargetUrl,
 } from '../src/services/researchReportUtils.mjs';
 
-test('normalizeResearchReport preserves professional sections and clickable news urls', () => {
+test('normalizeResearchReport preserves professional sections and strips display links', () => {
   const report = normalizeResearchReport({
     company: '삼성전자',
     role: '마케팅',
@@ -20,7 +19,7 @@ test('normalizeResearchReport preserves professional sections and clickable news
     news: [
       {
         title: '삼성전자, AI 반도체 투자 확대',
-        summary: 'AI 반도체 경쟁력 강화를 위한 투자를 발표했다.',
+        summary: 'AI 반도체 경쟁력 강화를 위한 투자를 발표했다. https://example.com/news',
         date: '2026-05-01',
         url: 'https://example.com/news',
         source: 'Example News',
@@ -37,13 +36,8 @@ test('normalizeResearchReport preserves professional sections and clickable news
   assert.equal(report.roleFitAnalysis[0], '마케팅 직무는 기술 이해와 고객 언어 변환 능력이 중요하다.');
   assert.equal(report.hiringSignals[0], '글로벌 협업 경험을 강조해야 한다.');
   assert.equal(report.risks[0], '메모리 업황 변동성을 고려해야 한다.');
-  assert.equal(report.news[0].url, 'https://example.com/news');
-  assert.equal(report.news[0].source, 'Example News');
-  assert.equal(report.sources[0].url, 'https://news.samsung.com');
-});
-
-test('getNewsTargetUrl returns null for missing or invalid urls', () => {
-  assert.equal(getNewsTargetUrl({ title: 'URL 없음' }), null);
-  assert.equal(getNewsTargetUrl({ title: '잘못된 URL', url: 'javascript:alert(1)' }), null);
-  assert.equal(getNewsTargetUrl({ title: '정상 URL', url: 'https://example.com/a' }), 'https://example.com/a');
+  assert.equal(report.news[0].summary.includes('https://'), false);
+  assert.equal('url' in report.news[0], false);
+  assert.equal('source' in report.news[0], false);
+  assert.deepEqual(report.sources, []);
 });

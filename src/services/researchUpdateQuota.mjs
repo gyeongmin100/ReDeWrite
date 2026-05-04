@@ -1,4 +1,4 @@
-const MONTHLY_RESEARCH_UPDATE_LIMIT = 5;
+const MONTHLY_RESEARCH_UPDATE_LIMIT = 10;
 
 function getMonthKey(date = new Date()) {
   return date.toISOString().slice(0, 7);
