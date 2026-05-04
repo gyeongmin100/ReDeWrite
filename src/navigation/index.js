@@ -186,6 +186,7 @@ export default function AppNavigator() {
         readResult: r.read_result,
         bestFit: r.best_fit,
         essay: r.essay,
+        createdAt: r.created_at,
       }));
       setResearches(mapped);
     }
@@ -226,6 +227,7 @@ export default function AppNavigator() {
       readResult: null,
       bestFit: null,
       essay: null,
+      createdAt: new Date().toISOString(),
     };
 
     setResearches(prev => [newResearch, ...prev]);

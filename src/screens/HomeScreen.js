@@ -6,6 +6,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 
+function formatRelativeTime(isoString) {
+  if (!isoString) return '';
+  const diff = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '방금';
+  if (mins < 60) return `${mins}분 전`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return '어제';
+  return `${days}일 전`;
+}
+
 export default function HomeScreen({ navigation, user, researches }) {
   const featured = researches[0];
 
@@ -15,9 +28,6 @@ export default function HomeScreen({ navigation, user, researches }) {
         {/* Header */}
         <View style={s.header}>
           <Text style={s.logo}>Re<Text style={{ color: t.primary }}>De</Text>Write</Text>
-          <TouchableOpacity style={s.iconBtn}>
-            <Ionicons name="notifications-outline" size={22} color={t.muted} />
-          </TouchableOpacity>
         </View>
 
         {/* Greeting */}
@@ -27,7 +37,7 @@ export default function HomeScreen({ navigation, user, researches }) {
             <Text style={s.greetName}>{user.name}님 👋</Text>
           </View>
           <View style={s.avatar}>
-            <Text style={s.avatarText}>{user.name[0]}</Text>
+            <Text style={s.avatarText}>{user.name?.[0] ?? '?'}</Text>
           </View>
         </View>
 
@@ -104,21 +114,27 @@ export default function HomeScreen({ navigation, user, researches }) {
         {/* Recent activity */}
         <View style={s.activityHeader}>
           <Text style={s.sectionLabel}>최근 활동</Text>
-          <Text style={s.more}>더보기</Text>
         </View>
-        <View style={s.activityCard}>
-          {[
-            { label: '삼성전자 인재상 분석 완료', time: '1시간 전' },
-            { label: '자소서 소재 분석 (3차 추정)', time: '어제' },
-            { label: '편의점 야간 경험 → Best Fit 추가', time: '2일 전' },
-          ].map((item, i, arr) => (
-            <View key={i} style={[s.activityRow, i < arr.length - 1 && s.activityBorder]}>
-              <View style={s.dot} />
-              <Text style={s.activityLabel}>{item.label}</Text>
-              <Text style={s.activityTime}>{item.time}</Text>
-            </View>
-          ))}
-        </View>
+        {researches.length === 0 ? (
+          <View style={[s.activityCard, { paddingVertical: 18, alignItems: 'center' }]}>
+            <Text style={{ fontSize: 13, color: t.faint }}>아직 활동이 없어요</Text>
+          </View>
+        ) : (
+          <View style={s.activityCard}>
+            {researches.slice(0, 3).map((r, i, arr) => {
+              const label = r.pipeline?.[0] === 'done'
+                ? `${r.name} Read 완료`
+                : `${r.name} 리서치 시작`;
+              return (
+                <View key={r.companyId} style={[s.activityRow, i < arr.length - 1 && s.activityBorder]}>
+                  <View style={s.dot} />
+                  <Text style={s.activityLabel}>{label}</Text>
+                  <Text style={s.activityTime}>{formatRelativeTime(r.createdAt)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -129,7 +145,6 @@ const s = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingBottom: 32 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, marginBottom: 22 },
   logo: { fontSize: 19, fontWeight: '700', color: t.ink, letterSpacing: -0.4 },
-  iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   greeting: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   greetSub: { fontSize: 12, color: t.muted, marginBottom: 4 },
   greetName: { fontSize: 26, fontWeight: '700', color: t.ink, letterSpacing: -0.5 },
@@ -161,7 +176,6 @@ const s = StyleSheet.create({
   rdwLabel: { fontSize: 12, fontWeight: '700', color: t.ink },
   rdwSub: { fontSize: 10, color: t.muted },
   activityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  more: { fontSize: 11, color: t.faint },
   activityCard: { backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.border, overflow: 'hidden' },
   activityRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13 },
   activityBorder: { borderBottomWidth: 1, borderBottomColor: t.border },

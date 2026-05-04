@@ -10,12 +10,30 @@ import { tokens as t } from '../theme/tokens';
 export default function MyScreen({ user, onSignOut, onUpdateUser }) {
   const [addingExp, setAddingExp] = useState(false);
   const [newExpText, setNewExpText] = useState('');
+  const [editingIdx, setEditingIdx] = useState(null);
 
-  const handleAddExp = async () => {
+  const handleSaveExp = async () => {
     if (!newExpText.trim()) return;
-    const updated = [...user.experiences, newExpText.trim()];
+    let updated;
+    if (editingIdx !== null) {
+      updated = user.experiences.map((e, i) => i === editingIdx ? newExpText.trim() : e);
+    } else {
+      updated = [...user.experiences, newExpText.trim()];
+    }
     setAddingExp(false);
+    setEditingIdx(null);
     setNewExpText('');
+    if (onUpdateUser) onUpdateUser(updated);
+  };
+
+  const handleEditExp = (idx) => {
+    setEditingIdx(idx);
+    setNewExpText(user.experiences[idx]);
+    setAddingExp(true);
+  };
+
+  const handleDeleteExp = (idx) => {
+    const updated = user.experiences.filter((_, i) => i !== idx);
     if (onUpdateUser) onUpdateUser(updated);
   };
 
@@ -46,13 +64,20 @@ export default function MyScreen({ user, onSignOut, onUpdateUser }) {
             {user.experiences.map((e, i, arr) => (
               <View key={i} style={[s.expRow, i < arr.length - 1 && s.expBorder]}>
                 <Text style={s.expNum}>{String(i + 1).padStart(2, '0')}</Text>
-                <Text style={s.expText}>{e}</Text>
+                <Text style={[s.expText, { flex: 1 }]}>{e}</Text>
+                <TouchableOpacity onPress={() => handleEditExp(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="pencil-outline" size={15} color={t.muted} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteExp(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 10 }}>
+                  <Ionicons name="trash-outline" size={15} color={t.danger} />
+                </TouchableOpacity>
               </View>
             ))}
           </View>
 
           {addingExp ? (
             <View style={s.addExpContainer}>
+              <Text style={s.sectionLabel}>{editingIdx !== null ? '경험 수정' : '새 경험 추가'}</Text>
               <TextInput
                 style={s.addExpInput}
                 placeholder="경험을 입력하세요 (역할, 성과, 수치 포함)"
@@ -67,6 +92,7 @@ export default function MyScreen({ user, onSignOut, onUpdateUser }) {
                   style={s.cancelBtn}
                   onPress={() => {
                     setAddingExp(false);
+                    setEditingIdx(null);
                     setNewExpText('');
                   }}
                   activeOpacity={0.7}
@@ -75,7 +101,7 @@ export default function MyScreen({ user, onSignOut, onUpdateUser }) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.saveBtn, !newExpText.trim() && s.btnDisabled]}
-                  onPress={handleAddExp}
+                  onPress={handleSaveExp}
                   disabled={!newExpText.trim()}
                   activeOpacity={0.8}
                 >
@@ -93,20 +119,6 @@ export default function MyScreen({ user, onSignOut, onUpdateUser }) {
               <Text style={s.addBtnText}>경험 추가</Text>
             </TouchableOpacity>
           )}
-
-          {/* Settings */}
-          <View style={s.menuCard}>
-            {[
-              { icon: 'settings-outline', label: '설정' },
-              { icon: 'notifications-outline', label: '알림 관리' },
-            ].map((item, i, arr) => (
-              <TouchableOpacity key={i} style={[s.menuRow, i < arr.length - 1 && s.menuBorder]} activeOpacity={0.7}>
-                <Ionicons name={item.icon} size={18} color={t.muted} />
-                <Text style={s.menuLabel}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={16} color={t.faint} />
-              </TouchableOpacity>
-            ))}
-          </View>
 
           <TouchableOpacity style={s.signOutBtn} onPress={onSignOut} activeOpacity={0.7}>
             <Ionicons name="log-out-outline" size={18} color={t.danger} />
@@ -188,10 +200,6 @@ const s = StyleSheet.create({
   },
   saveBtnText: { fontSize: 13, color: '#fff', fontWeight: '700' },
   btnDisabled: { opacity: 0.5 },
-  menuCard: { backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.border, marginBottom: 4, overflow: 'hidden' },
-  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  menuBorder: { borderBottomWidth: 1, borderBottomColor: t.border },
-  menuLabel: { flex: 1, fontSize: 13, color: t.ink, fontWeight: '500' },
   signOutBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
   signOutText: { fontSize: 13, color: t.danger, fontWeight: '600' },
   footer: { alignItems: 'center', marginTop: 16 },

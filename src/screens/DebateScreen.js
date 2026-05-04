@@ -8,13 +8,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 import { chatWithAI } from '../services/aiService';
 
-const QUICK_CHIPS = [
-  '인재상 분석하기',
-  '내 경험 매핑하기',
-  '지원 이유 만들기',
-  '약점 방어 전략',
-  '예상 면접 질문',
-];
+function buildQuickChips(traits = []) {
+  const traitChips = traits.slice(0, 3).map(trait => `"${trait}" 관련 경험 매핑`);
+  const fixed = ['자기소개서 소재 찾기', '약점 방어 전략', '예상 면접 질문'];
+  return [...traitChips, ...fixed];
+}
 
 export default function DebateScreen({ navigation, route, researches, updateResearch, user }) {
   const { companyId } = route.params;
@@ -27,6 +25,8 @@ export default function DebateScreen({ navigation, route, researches, updateRese
     role: 'assistant',
     content: `${company} ${role} 리서치 완료!\n어떤 걸 먼저 분석할까요?`,
   };
+
+  const quickChips = buildQuickChips(report?.traits ?? []);
 
   const [messages, setMessages] = useState([initialMsg]);
   const [input, setInput] = useState('');
@@ -81,9 +81,6 @@ export default function DebateScreen({ navigation, route, researches, updateRese
     });
     navigation.navigate('Write', { companyId });
   };
-
-  const userTurnCount = messages.filter(m => m.role === 'user').length;
-  const isFirst = userTurnCount === 0;
 
   return (
     <SafeAreaView style={s.root}>
@@ -154,28 +151,6 @@ export default function DebateScreen({ navigation, route, researches, updateRese
               </View>
             )}
 
-            {/* 첫 메시지 이후 빠른 선택 칩 */}
-            {isFirst && !loading && (
-              <View style={s.chipsContainer}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={s.quickChipsRow}
-                >
-                  {QUICK_CHIPS.map(chip => (
-                    <TouchableOpacity
-                      key={chip}
-                      style={s.quickChip}
-                      onPress={() => handleQuickChip(chip)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={s.quickChipText}>{chip}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
             {/* Write 이동 버튼 */}
             {showWriteBtn && !loading && (
               <TouchableOpacity
@@ -188,6 +163,27 @@ export default function DebateScreen({ navigation, route, researches, updateRese
               </TouchableOpacity>
             )}
           </ScrollView>
+
+          {/* 빠른 선택 칩 - 항상 표시 (로딩 중 숨김) */}
+          {!loading && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.quickChipsRow}
+              style={s.chipsScroll}
+            >
+              {quickChips.map(chip => (
+                <TouchableOpacity
+                  key={chip}
+                  style={s.quickChip}
+                  onPress={() => handleQuickChip(chip)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={s.quickChipText}>{chip}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
 
           {/* 입력창 */}
           <View style={s.inputRow}>
@@ -264,8 +260,8 @@ const s = StyleSheet.create({
   typingDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: t.faint },
 
   // 빠른 선택 칩
-  chipsContainer: { marginTop: 4 },
-  quickChipsRow: { gap: 8, paddingRight: 4 },
+  chipsScroll: { flexGrow: 0, paddingVertical: 8, borderTopWidth: 1, borderTopColor: t.border },
+  quickChipsRow: { gap: 8, paddingRight: 4, paddingLeft: 0 },
   quickChip: {
     paddingHorizontal: 14, height: 34, borderRadius: 999,
     backgroundColor: t.surface, borderWidth: 1, borderColor: t.borderStrong,

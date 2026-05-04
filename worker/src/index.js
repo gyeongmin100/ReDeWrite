@@ -124,22 +124,30 @@ async function handleCollectCompanyInfo(payload, env) {
   const company = requireString(payload.company, 'company', 80);
   const role = requireString(payload.role, 'role', 80);
 
-  const data = await callOpenAI('/responses', {
-    model: 'gpt-4o',
-    tools: [{ type: 'web_search_preview' }],
-    input: `${company} ${role} 관련 인재상, JD 핵심 역량, 최근 뉴스 3건, 조직문화를 조사해서 아래 JSON 형식으로만 반환하세요.
+  const data = await callOpenAI('/chat/completions', {
+    model: 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `당신은 한국 취업 전문가입니다. 기업과 직무에 대한 정보를 JSON 형식으로만 반환하세요.
+반드시 아래 형식을 정확히 따르세요:
 {
-  "traits": ["인재상 키워드"],
-  "jdKeywords": ["JD 역량"],
-  "news": [{"title": "뉴스 제목", "summary": "한 줄 요약", "date": "YYYY.MM.DD"}],
-  "culture": ["조직문화"]
-}`,
+  "traits": ["인재상 키워드 4-6개"],
+  "jdKeywords": ["직무 핵심역량 4-6개"],
+  "news": [{"title": "기업 관련 주요 동향 제목", "summary": "한 줄 요약", "date": "2024.XX.XX"}],
+  "culture": ["조직문화 키워드 3-5개"]
+}
+news는 반드시 3건 포함하세요.`,
+      },
+      {
+        role: 'user',
+        content: `${company}의 ${role} 직무에 대한 인재상, JD 핵심역량, 최근 알려진 기업 동향(뉴스 3건), 조직문화를 알려주세요.`,
+      },
+    ],
   }, env);
 
-  const messageOutput = data.output?.find(item => item.type === 'message');
-  const rawText = messageOutput?.content?.[0]?.text ?? '';
-  const parsed = parseJsonText(rawText);
-
+  const parsed = JSON.parse(data.choices[0].message.content);
   return {
     traits: Array.isArray(parsed.traits) ? parsed.traits.slice(0, 8) : [],
     jdKeywords: Array.isArray(parsed.jdKeywords) ? parsed.jdKeywords.slice(0, 8) : [],
@@ -171,7 +179,7 @@ JD 핵심 역량: ${(researchReport.jdKeywords || []).join(', ').slice(0, 500)}
 [지원자 경험]
 ${userExperiences.map((item, index) => `${index + 1}. ${item}`).join('\n')}
 
-답변은 간결하고 실용적으로 200자 이내로 작성하세요.`;
+답변은 실용적으로 400자 이내로 작성하세요. 사용자의 경험이 있다면 해당 경험을 직접 인용하며 구체적으로 조언하세요. 경험이 없으면 MY 탭에서 경험을 추가하도록 안내하세요.`;
 
   const data = await callOpenAI('/chat/completions', {
     model: 'gpt-4o-mini',
