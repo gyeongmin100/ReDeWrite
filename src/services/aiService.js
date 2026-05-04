@@ -69,3 +69,39 @@ export async function chatWithAI(messages, researchReport, userExperiences) {
   });
   return data.message;
 }
+
+export async function generateEssayDraft({
+  questionText,
+  targetLength,
+  researchReport,
+  debateMessages,
+  userExperiences,
+}) {
+  return callWorker('/write-draft', {
+    questionText,
+    targetLength,
+    researchReport,
+    debateMessages,
+    userExperiences,
+  });
+}
+
+export async function reviseEssayDraft({
+  questionText,
+  targetLength,
+  currentDraft,
+  revisionRequest,
+  researchReport,
+  debateMessages,
+  userExperiences,
+}) {
+  return callWorker('/revise-essay', {
+    questionText,
+    targetLength,
+    currentDraft,
+    revisionRequest,
+    researchReport,
+    debateMessages,
+    userExperiences,
+  });
+}

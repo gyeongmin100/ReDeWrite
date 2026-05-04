@@ -10,7 +10,7 @@ import { normalizeResearchReport } from '../services/researchReportUtils.mjs';
 import {
   appendResearchUpdateHistory,
   canUseResearchUpdate,
-  getRemainingResearchUpdates,
+  getResearchUpdateUsageLabel,
 } from '../services/researchUpdateQuota.mjs';
 
 function InsightList({ items }) {
@@ -60,7 +60,7 @@ export default function ReadScreen({
   const role = research?.role ?? rawReport?.role ?? '';
   const report = rawReport ? normalizeResearchReport({ company: companyName, role, ...rawReport }) : null;
   const loading = collectingResearchIds.includes(companyId) || research?.status === 'collecting';
-  const remainingUpdates = getRemainingResearchUpdates(researches);
+  const updateUsageLabel = getResearchUpdateUsageLabel(researches);
   const canUpdate = canUseResearchUpdate(researches);
   const displayError = error || research?.errorMessage;
 
@@ -118,13 +118,11 @@ export default function ReadScreen({
                 <Ionicons name="refresh" size={14} color={t.faint} />
               )}
               <Text style={s.updateMiniText}>업데이트</Text>
+              <Text style={s.updateMiniCount}>{updateUsageLabel}</Text>
             </TouchableOpacity>
           )}
         </View>
         <Text style={s.role}>{role}</Text>
-        {report && (
-          <Text style={s.updateMiniSub}>월 10회 중 {remainingUpdates}회 남음</Text>
-        )}
 
         {loading && (
           <View style={s.loadingNotice}>
@@ -173,10 +171,6 @@ export default function ReadScreen({
         {/* 리포트 있을 때 */}
         {report && (
           <>
-            {!canUpdate && (
-              <Text style={s.limitText}>월 업데이트 한도를 모두 사용했어요.</Text>
-            )}
-
             {report.summary && (
               <View style={s.card}>
                 <Text style={s.cardLabel}>리서치 요약</Text>
@@ -289,7 +283,7 @@ const s = StyleSheet.create({
   tag: { fontSize: 10, fontWeight: '700', color: t.primary, letterSpacing: 1.2 },
   companyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
   companyName: { flex: 1, minWidth: 0, fontSize: 24, fontWeight: '700', color: t.ink, letterSpacing: -0.5 },
-  role: { fontSize: 12, color: t.muted, marginBottom: 4 },
+  role: { fontSize: 12, color: t.muted, marginBottom: 16 },
   updateMiniBtn: {
     minHeight: 28, borderRadius: 999, paddingHorizontal: 8,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
@@ -297,7 +291,7 @@ const s = StyleSheet.create({
     flexShrink: 0,
   },
   updateMiniText: { fontSize: 11, fontWeight: '600', color: t.faint },
-  updateMiniSub: { fontSize: 11, color: t.faint, marginBottom: 16 },
+  updateMiniCount: { fontSize: 10, fontWeight: '700', color: t.faint },
   loadingNotice: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: t.primarySoft, borderRadius: 12, borderWidth: 1, borderColor: t.primaryLight,
@@ -316,7 +310,6 @@ const s = StyleSheet.create({
   insightBullet: { fontSize: 13, color: t.primary, lineHeight: 20 },
   insightText: { flex: 1, minWidth: 0, fontSize: 12, color: t.inkSoft, lineHeight: 20 },
   updateBtnDisabled: { opacity: 0.45 },
-  limitText: { fontSize: 12, color: t.warn, marginBottom: 12, lineHeight: 18 },
 
   // 칩
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

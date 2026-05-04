@@ -1,132 +1,331 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  ActivityIndicator,
+  Share,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  View,
+  StyleSheet,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
-import { mockCompanies } from '../data/mockData';
-
-const MOCK_DRAFT = `삼성전자 반도체 공정에 제 강점인 정밀성·꼼꼼함을 더해 스마트팩토리 설비 운영의 안정성을 가장 빠르게 끌어올리는 인재가 되겠습니다.
-
-2학년 때 팀 프로젝트로 1mm 이하 오차를 잡아내는 PCB 조립 작업을 4단계 표준 작업서로 정리했습니다. 4명의 동료가 각자 다른 방식으로 작업하다 보니 불량률이 6%까지 올랐는데, 측정·납땜·1차 검사·2차 검사를 분리해 책임자를 지정한 결과 6주 만에 1.2%로 떨어졌습니다.
-
-또한 NCS 자동차정비 자격증 취득 과정에서 240시간 현장 실습을 진행하며, 정비 매뉴얼을 디지털 체크리스트로 옮겨 같은 반 후배 12명이 실습에 참고할 수 있도록 공유했습니다. 입사 후에도 작업 표준을 빠르게 숙지·개선해 동료와 함께 성과를 만드는 구성원이 되겠습니다.`;
-
-const DEFAULT_QUESTIONS = [
-  { id: 'q1', text: '지원 동기 및 입사 후 포부를 작성해 주세요. (최대 800자)' },
-  { id: 'q2', text: '본인의 강점과 그것이 직무에 어떻게 기여할 수 있는지 서술해 주세요. (최대 600자)' },
-];
+import {
+  generateEssayDraft,
+  reviseEssayDraft,
+} from '../services/aiService';
+import {
+  applyEssayRevision,
+  buildEssayPayload,
+  buildEssayShareText,
+  undoEssayRevision,
+} from '../services/essayUtils.mjs';
 
 export default function WriteScreen({ navigation, route, researches, updateResearch, user }) {
   const { companyId } = route.params;
-  const mockCompany = mockCompanies.find(c => c.id === companyId);
   const research = researches.find(r => r.companyId === companyId);
-  const company = mockCompany || {
-    name: research?.name || '기업',
-    questions: DEFAULT_QUESTIONS,
-  };
-  const [stage, setStage] = useState(research?.essay ? 'result' : 'select');
-  const [qIdx, setQIdx] = useState(0);
-  const [essay, setEssay] = useState(research?.essay);
-  const q = company.questions[qIdx];
+  const companyName = research?.name || research?.researchReport?.company || '기업';
+  const report = research?.researchReport ?? null;
+  const savedEssay = research?.essay ?? null;
+  const debateMessages = research?.bestFit?.messages ?? [];
 
-  const run = async () => {
-    setStage('writing');
-    await new Promise(r => setTimeout(r, 2500));
-    const result = { draft: MOCK_DRAFT, questionId: q.id, questionText: q.text };
-    setEssay(result);
-    setStage('result');
+  const [stage, setStage] = useState(savedEssay?.draft ? 'result' : 'input');
+  const [questionText, setQuestionText] = useState(savedEssay?.questionText || '');
+  const [targetLength, setTargetLength] = useState(savedEssay?.targetLength || '');
+  const [essay, setEssay] = useState(savedEssay);
+  const [draftText, setDraftText] = useState(savedEssay?.draft || '');
+  const [revisionRequest, setRevisionRequest] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const persistEssay = (nextEssay) => {
+    setEssay(nextEssay);
+    setDraftText(nextEssay.draft);
     updateResearch(companyId, {
-      essay: result,
+      essay: nextEssay,
       pipeline: ['done', 'done', 'done'],
-      completedSteps: 6,
+      completedSteps: Math.max(research?.completedSteps ?? 1, 6),
     });
   };
 
+  const handleGenerate = async () => {
+    const trimmedQuestion = questionText.trim();
+    if (!trimmedQuestion || loading) return;
+
+    setLoading(true);
+    setError('');
+    setCopied(false);
+
+    try {
+      const result = await generateEssayDraft({
+        questionText: trimmedQuestion,
+        targetLength: targetLength.trim(),
+        researchReport: report,
+        debateMessages,
+        userExperiences: user?.experiences ?? [],
+      });
+      const nextEssay = buildEssayPayload({
+        questionText: trimmedQuestion,
+        targetLength,
+        draft: result.draft,
+        evidenceSummary: result.evidenceSummary,
+      });
+      persistEssay(nextEssay);
+      setStage('result');
+    } catch (err) {
+      console.warn('generateEssayDraft error:', err.message);
+      setError('초안 생성에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveDraft = () => {
+    if (!essay) return;
+    const nextEssay = buildEssayPayload({
+      ...essay,
+      questionText,
+      targetLength,
+      draft: draftText,
+    });
+    persistEssay(nextEssay);
+    setCopied(false);
+  };
+
+  const handleRevise = async () => {
+    const request = revisionRequest.trim();
+    if (!essay || !draftText.trim() || !request || loading) return;
+
+    setLoading(true);
+    setError('');
+    setCopied(false);
+
+    try {
+      const result = await reviseEssayDraft({
+        questionText: questionText.trim() || essay.questionText,
+        targetLength: targetLength.trim() || essay.targetLength,
+        currentDraft: draftText,
+        revisionRequest: request,
+        researchReport: report,
+        debateMessages,
+        userExperiences: user?.experiences ?? [],
+      });
+      const revised = applyEssayRevision(
+        { ...essay, questionText, targetLength, draft: draftText },
+        result.draft,
+      );
+      const nextEssay = buildEssayPayload({
+        ...revised,
+        evidenceSummary: result.evidenceSummary,
+      });
+      persistEssay(nextEssay);
+      setRevisionRequest('');
+    } catch (err) {
+      console.warn('reviseEssayDraft error:', err.message);
+      setError('AI 수정에 실패했어요. 요청을 조금 더 짧게 바꿔 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUndo = () => {
+    if (!essay?.previousDraft) return;
+    persistEssay(undoEssayRevision(essay));
+  };
+
+  const handleCopy = async () => {
+    if (!essay?.draft) return;
+    const text = buildEssayShareText({
+      companyName,
+      essay: { ...essay, questionText, draft: draftText },
+    });
+    await Clipboard.setStringAsync(text);
+    setCopied(true);
+  };
+
+  const handleShare = async () => {
+    if (!essay?.draft) return;
+    const text = buildEssayShareText({
+      companyName,
+      essay: { ...essay, questionText, draft: draftText },
+    });
+
+    try {
+      await Share.share({ message: text });
+    } catch (err) {
+      console.warn('Share essay error:', err.message);
+    }
+  };
+
+  const dirty = Boolean(essay && draftText !== essay.draft);
+  const canGenerate = questionText.trim().length > 0 && !loading;
+  const canRevise = Boolean(essay?.draft && revisionRequest.trim() && !loading);
+
   return (
     <SafeAreaView style={s.root}>
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={s.header}>
           <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={20} color={t.ink} />
           </TouchableOpacity>
           <Text style={s.tag}>WRITE · 자소서</Text>
-          {essay && <View style={s.savedChip}><Text style={s.savedChipText}>저장됨</Text></View>}
+          {essay?.draft && <View style={s.savedChip}><Text style={s.savedChipText}>저장됨</Text></View>}
         </View>
-        <Text style={s.title}>{company.name} 자소서</Text>
-        <Text style={s.sub}>{q.id} · AI 초안 생성됨</Text>
 
-        {stage === 'select' && (
-          <>
-            <Text style={s.label}>자소서 항목 선택</Text>
-            {company.questions.map((cq, i) => (
-              <TouchableOpacity
-                key={cq.id}
-                style={[s.questionCard, qIdx === i && s.questionCardActive]}
-                onPress={() => setQIdx(i)}
-                activeOpacity={0.8}
-              >
-                <Text style={s.qNum}>Q{i + 1}</Text>
-                <Text style={s.qText}>{cq.text}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={s.primaryBtn} onPress={run} activeOpacity={0.85}>
-              <Ionicons name="sparkles" size={18} color="#fff" />
-              <Text style={s.primaryBtnText}>AI 초안 생성</Text>
+        <Text style={s.title}>{companyName} 자소서</Text>
+        <Text style={s.sub}>실제 지원서 문항을 기준으로 초안을 만들고 다듬습니다</Text>
+
+        {stage === 'input' && (
+          <View style={s.section}>
+            <Text style={s.label}>자소서 문항</Text>
+            <TextInput
+              style={[s.inputBox, s.questionInput]}
+              value={questionText}
+              onChangeText={setQuestionText}
+              placeholder="지원서에 있는 문항을 그대로 붙여넣어 주세요"
+              placeholderTextColor={t.faint}
+              multiline
+              maxLength={2000}
+            />
+
+            <Text style={s.label}>글자 수 제한</Text>
+            <TextInput
+              style={s.inputBox}
+              value={targetLength}
+              onChangeText={setTargetLength}
+              placeholder="예: 700자 이내"
+              placeholderTextColor={t.faint}
+              maxLength={40}
+            />
+
+            {error ? <Text style={s.errorText}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[s.primaryBtn, !canGenerate && s.btnDisabled]}
+              onPress={handleGenerate}
+              activeOpacity={0.85}
+              disabled={!canGenerate}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="sparkles" size={18} color="#fff" />
+              )}
+              <Text style={s.primaryBtnText}>{loading ? '초안 작성 중...' : 'AI 초안 생성'}</Text>
             </TouchableOpacity>
-          </>
-        )}
-
-        {stage === 'writing' && (
-          <View style={s.analyzing}>
-            <View style={s.analyzeOrb} />
-            <Text style={s.analyzeText}>초안 작성 중...</Text>
-            {['Read 결과 인용', 'Debate Best Fit 적용', 'STAR 구조 작성'].map((step, i) => (
-              <View key={i} style={s.stepRow}>
-                <View style={s.stepDot} />
-                <Text style={s.stepText}>{step}</Text>
-              </View>
-            ))}
           </View>
         )}
 
         {stage === 'result' && essay && (
           <>
-            {/* Question box */}
             <View style={s.questionBox}>
-              <Text style={s.questionBoxLabel}>QUESTION</Text>
-              <Text style={s.questionBoxText}>{essay.questionText}</Text>
+              <View style={s.questionHeader}>
+                <Text style={s.questionBoxLabel}>QUESTION</Text>
+                <TouchableOpacity onPress={() => setStage('input')} activeOpacity={0.75}>
+                  <Text style={s.editQuestionText}>문항 수정</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={s.questionBoxText}>{questionText || essay.questionText}</Text>
+              {(targetLength || essay.targetLength) ? (
+                <Text style={s.targetLengthText}>{targetLength || essay.targetLength}</Text>
+              ) : null}
             </View>
 
-            {/* Citation cards */}
-            <View style={s.citationCard}>
-              <Text style={[s.citationLabel, { color: t.primary }]}>● Read · 인재상 인용</Text>
-              <Text style={s.citationText}>삼성전자 반도체 공정에 제 강점인 <Text style={{ fontWeight: '700' }}>정밀성·꼼꼼함</Text>을 더해 스마트팩토리 설비 운영의 안정성을 가장 빠르게 끌어올리는 인재가 되겠습니다.</Text>
+            <Text style={s.label}>초안</Text>
+            <TextInput
+              style={[s.inputBox, s.draftInput]}
+              value={draftText}
+              onChangeText={(text) => {
+                setDraftText(text);
+                setCopied(false);
+              }}
+              multiline
+              textAlignVertical="top"
+              maxLength={6000}
+            />
+
+            <View style={s.metaRow}>
+              <Text style={s.charCount}>총 {draftText.length}자</Text>
+              {dirty && (
+                <TouchableOpacity style={s.saveInlineBtn} onPress={handleSaveDraft} activeOpacity={0.75}>
+                  <Ionicons name="save-outline" size={14} color={t.primary} />
+                  <Text style={s.saveInlineText}>수정 저장</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            <View style={s.citationCard}>
-              <Text style={[s.citationLabel, { color: '#A77B0E' }]}>● Debate · Best Fit 인용</Text>
-              <Text style={s.citationText}>2학년 때 PCB 조립 작업을 4단계 표준 작업서로 정리해 불량률을 6%에서 <Text style={{ fontWeight: '700' }}>1.2%</Text>로 낮췄습니다.</Text>
+            {essay.evidenceSummary?.length > 0 && (
+              <View style={s.citationCard}>
+                <Text style={s.citationLabel}>반영 근거</Text>
+                {essay.evidenceSummary.map((item, index) => (
+                  <View key={`${item}-${index}`} style={s.evidenceRow}>
+                    <Text style={s.evidenceDot}>•</Text>
+                    <Text style={s.evidenceText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={s.revisionCard}>
+              <Text style={s.label}>AI에게 수정 요청</Text>
+              <View style={s.revisionRow}>
+                <TextInput
+                  style={s.revisionInput}
+                  value={revisionRequest}
+                  onChangeText={setRevisionRequest}
+                  placeholder="예: 700자로 줄이고 직무 연결을 강화해줘"
+                  placeholderTextColor={t.faint}
+                  multiline
+                  maxLength={1000}
+                  editable={!loading}
+                />
+                <TouchableOpacity
+                  style={[s.revisionBtn, !canRevise && s.btnDisabled]}
+                  onPress={handleRevise}
+                  disabled={!canRevise}
+                  activeOpacity={0.8}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="send" size={17} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </View>
+              {error ? <Text style={s.errorText}>{error}</Text> : null}
             </View>
 
-            <View style={s.citationCard}>
-              <Text style={[s.citationLabel, { color: t.primary }]}>● 입사 후 포부</Text>
-              <Text style={s.citationText}>NCS 자동차정비 자격증 취득 과정에서 240시간 현장 실습을 진행하며, 정비 매뉴얼을 디지털 체크리스트로 공유했습니다.</Text>
-            </View>
-
-            {/* Actions */}
             <View style={s.actions}>
-              <TouchableOpacity style={s.secondaryBtn} onPress={run} activeOpacity={0.8}>
+              <TouchableOpacity style={s.secondaryBtn} onPress={handleGenerate} activeOpacity={0.8} disabled={loading}>
                 <Ionicons name="refresh" size={16} color={t.ink} />
                 <Text style={s.secondaryBtnText}>다시 생성</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.darkBtn} activeOpacity={0.85}>
-                <Ionicons name="download-outline" size={16} color="#fff" />
-                <Text style={s.darkBtnText}>PDF 내보내기</Text>
+              <TouchableOpacity
+                style={[s.secondaryBtn, !essay.previousDraft && s.btnDisabled]}
+                onPress={handleUndo}
+                activeOpacity={0.8}
+                disabled={!essay.previousDraft}
+              >
+                <Ionicons name="return-up-back" size={16} color={t.ink} />
+                <Text style={s.secondaryBtnText}>되돌리기</Text>
               </TouchableOpacity>
             </View>
-            <Text style={s.charCount}>총 {essay.draft.length}자 · 권장 600~700자</Text>
+
+            <View style={s.actions}>
+              <TouchableOpacity style={s.secondaryBtn} onPress={handleCopy} activeOpacity={0.8}>
+                <Ionicons name="copy-outline" size={16} color={t.ink} />
+                <Text style={s.secondaryBtnText}>복사</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.darkBtn} onPress={handleShare} activeOpacity={0.85}>
+                <Ionicons name="share-social-outline" size={16} color="#fff" />
+                <Text style={s.darkBtnText}>공유</Text>
+              </TouchableOpacity>
+            </View>
+            {copied && <Text style={s.copiedText}>복사됨</Text>}
           </>
         )}
       </ScrollView>
@@ -142,43 +341,59 @@ const s = StyleSheet.create({
   tag: { flex: 1, fontSize: 10, fontWeight: '700', color: t.primary, letterSpacing: 1.2 },
   savedChip: { paddingHorizontal: 10, height: 22, borderRadius: 999, backgroundColor: t.primarySoft, alignItems: 'center', justifyContent: 'center' },
   savedChipText: { fontSize: 11, fontWeight: '600', color: t.primary },
-  title: { fontSize: 22, fontWeight: '700', color: t.ink, letterSpacing: -0.5, marginBottom: 6 },
-  sub: { fontSize: 12, color: t.muted, marginBottom: 18 },
-  label: { fontSize: 12, fontWeight: '700', color: t.muted, marginBottom: 10 },
-  questionCard: {
-    backgroundColor: t.surface, borderRadius: 14, borderWidth: 2, borderColor: t.border, padding: 14, marginBottom: 8,
+  title: { fontSize: 22, fontWeight: '700', color: t.ink, marginBottom: 6 },
+  sub: { fontSize: 12, color: t.muted, lineHeight: 18, marginBottom: 18 },
+  section: { gap: 10 },
+  label: { fontSize: 12, fontWeight: '700', color: t.muted, marginBottom: 8 },
+  inputBox: {
+    backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.borderStrong,
+    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: t.ink, lineHeight: 21,
+    marginBottom: 12,
   },
-  questionCardActive: { borderColor: t.primary },
-  qNum: { fontSize: 11, fontWeight: '700', color: t.muted, marginBottom: 4 },
-  qText: { fontSize: 13, color: t.ink, lineHeight: 20 },
+  questionInput: { minHeight: 132, textAlignVertical: 'top' },
+  draftInput: { minHeight: 280, textAlignVertical: 'top' },
   primaryBtn: {
     height: 52, borderRadius: 14, backgroundColor: t.primary,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4,
   },
   primaryBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  analyzing: { alignItems: 'center', paddingVertical: 40 },
-  analyzeOrb: { width: 56, height: 56, borderRadius: 28, backgroundColor: t.primary, opacity: 0.2, marginBottom: 20 },
-  analyzeText: { fontSize: 15, fontWeight: '700', color: t.ink, marginBottom: 18 },
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  stepDot: { width: 16, height: 16, borderRadius: 8, backgroundColor: t.primary },
-  stepText: { fontSize: 13, color: t.ink },
-  questionBox: { backgroundColor: t.primarySoft, borderRadius: 14, padding: 14, marginBottom: 10 },
-  questionBoxLabel: { fontSize: 11, fontWeight: '700', color: t.primary, letterSpacing: 0.8, marginBottom: 6 },
+  btnDisabled: { opacity: 0.45 },
+  errorText: { fontSize: 12, color: t.danger, lineHeight: 18, marginBottom: 10 },
+  questionBox: { backgroundColor: t.primarySoft, borderRadius: 14, padding: 14, marginBottom: 14 },
+  questionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 },
+  questionBoxLabel: { fontSize: 11, fontWeight: '700', color: t.primary, letterSpacing: 0.8 },
+  editQuestionText: { fontSize: 12, fontWeight: '700', color: t.primary },
   questionBoxText: { fontSize: 13, color: t.ink, lineHeight: 20 },
-  citationCard: { backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.border, padding: 14, marginBottom: 10 },
-  citationLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 },
-  citationText: { fontSize: 12, color: t.inkSoft, lineHeight: 20 },
+  targetLengthText: { fontSize: 11, color: t.muted, marginTop: 8 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
+  charCount: { fontSize: 11, color: t.faint },
+  saveInlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 28 },
+  saveInlineText: { fontSize: 12, fontWeight: '700', color: t.primary },
+  citationCard: { backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.border, padding: 14, marginBottom: 14 },
+  citationLabel: { fontSize: 11, fontWeight: '700', color: t.primary, letterSpacing: 0.8, marginBottom: 8 },
+  evidenceRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  evidenceDot: { color: t.primary, fontSize: 13, lineHeight: 20 },
+  evidenceText: { flex: 1, minWidth: 0, fontSize: 12, color: t.inkSoft, lineHeight: 20 },
+  revisionCard: { backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.border, padding: 14, marginBottom: 12 },
+  revisionRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  revisionInput: {
+    flex: 1, minHeight: 44, maxHeight: 112, borderRadius: 12, borderWidth: 1, borderColor: t.borderStrong,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: t.ink, lineHeight: 19,
+  },
+  revisionBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: t.primary, alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   secondaryBtn: {
-    flex: 1, height: 44, borderRadius: 14, backgroundColor: t.surface,
+    flex: 1, minHeight: 44, borderRadius: 14, backgroundColor: t.surface,
     borderWidth: 1, borderColor: t.borderStrong,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingHorizontal: 10,
   },
   secondaryBtnText: { fontSize: 14, fontWeight: '600', color: t.ink },
   darkBtn: {
-    flex: 1, height: 44, borderRadius: 14, backgroundColor: t.ink,
+    flex: 1, minHeight: 44, borderRadius: 14, backgroundColor: t.ink,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingHorizontal: 10,
   },
   darkBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  charCount: { fontSize: 11, color: t.faint, textAlign: 'center', marginTop: 4 },
+  copiedText: { fontSize: 12, color: t.primary, textAlign: 'center', marginTop: 2 },
 });

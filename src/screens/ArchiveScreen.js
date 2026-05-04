@@ -45,7 +45,7 @@ export default function ArchiveScreen({ navigation, researches }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.companyName}>{company.name}</Text>
-                      <Text style={s.essayMeta}>{r.essay.questionId} · {r.essay.draft.length}자</Text>
+                      <Text style={s.essayMeta}>{r.essay.questionId || '직접 입력 문항'} · {r.essay.draft.length}자</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={t.faint} />
                   </View>

@@ -1,4 +1,4 @@
-const MONTHLY_RESEARCH_UPDATE_LIMIT = 10;
+export const MONTHLY_RESEARCH_UPDATE_LIMIT = 10;
 
 function getMonthKey(date = new Date()) {
   return date.toISOString().slice(0, 7);
@@ -21,6 +21,10 @@ export function canUseResearchUpdate(researches = [], now = new Date()) {
 
 export function getRemainingResearchUpdates(researches = [], now = new Date()) {
   return Math.max(0, MONTHLY_RESEARCH_UPDATE_LIMIT - countMonthlyResearchUpdates(researches, now));
+}
+
+export function getResearchUpdateUsageLabel(researches = [], now = new Date()) {
+  return `${getRemainingResearchUpdates(researches, now)}/${MONTHLY_RESEARCH_UPDATE_LIMIT}`;
 }
 
 export function appendResearchUpdateHistory(report = {}, timestamp = new Date().toISOString()) {

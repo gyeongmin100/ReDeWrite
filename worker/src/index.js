@@ -29,6 +29,11 @@ function requireString(value, name, maxLength) {
   return value.trim();
 }
 
+function optionalString(value, maxLength) {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, maxLength);
+}
+
 function requireArray(value, name, maxItems) {
   if (!Array.isArray(value)) {
     throw new Error(`${name} must be an array.`);
@@ -201,6 +206,42 @@ function normalizeResearchReport(parsed, company, role, fallbackSources = []) {
   };
 }
 
+function normalizeEssayResponse(parsed) {
+  return {
+    draft: asText(parsed.draft),
+    evidenceSummary: asTextArray(parsed.evidenceSummary, 6),
+  };
+}
+
+function buildEssayContext({ researchReport = {}, debateMessages = [], userExperiences = [] }) {
+  const debateSummary = Array.isArray(debateMessages)
+    ? debateMessages
+      .slice(-12)
+      .map(message => `${message.role === 'assistant' ? 'AI' : '지원자'}: ${String(message.content || '').slice(0, 700)}`)
+      .join('\n')
+    : '';
+
+  const experiences = Array.isArray(userExperiences)
+    ? userExperiences.slice(0, 10).map((item, index) => `${index + 1}. ${String(item).slice(0, 1000)}`).join('\n')
+    : '';
+
+  return `[기업/직무 리서치]
+기업: ${String(researchReport.company || '미상').slice(0, 80)}
+직무: ${String(researchReport.role || '미상').slice(0, 80)}
+리서치 요약: ${String(researchReport.summary || '').slice(0, 1200)}
+인재상: ${(researchReport.traits || []).join(', ').slice(0, 700)}
+JD 핵심 역량: ${(researchReport.jdKeywords || []).join(', ').slice(0, 700)}
+직무 연결 전략: ${(researchReport.roleFitAnalysis || []).join(' / ').slice(0, 1200)}
+채용 신호: ${(researchReport.hiringSignals || []).join(' / ').slice(0, 1000)}
+주의 리스크: ${(researchReport.risks || []).join(' / ').slice(0, 800)}
+
+[Debate 대화]
+${debateSummary || '저장된 Debate 대화가 없습니다.'}
+
+[지원자 MY 경험]
+${experiences || '저장된 지원자 경험이 없습니다.'}`;
+}
+
 async function handleParseIntent(payload, env) {
   const userInput = requireString(payload.userInput, 'userInput', 1200);
 
@@ -349,6 +390,93 @@ ${userExperiences.map((item, index) => `${index + 1}. ${item}`).join('\n')}
   return { message: data.choices?.[0]?.message?.content || '' };
 }
 
+async function handleWriteDraft(payload, env) {
+  const questionText = requireString(payload.questionText, 'questionText', 2000);
+  const targetLength = optionalString(payload.targetLength, 40);
+  const context = buildEssayContext({
+    researchReport: payload.researchReport || {},
+    debateMessages: Array.isArray(payload.debateMessages) ? payload.debateMessages : [],
+    userExperiences: Array.isArray(payload.userExperiences) ? payload.userExperiences : [],
+  });
+
+  const data = await callOpenAI('/chat/completions', {
+    model: env.WRITE_MODEL || 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content:
+          '당신은 한국 취업 자기소개서 전문 코치입니다. 사용자의 실제 자소서 문항에 맞춰 기업 리서치, Debate 대화, MY 경험을 근거로 자연스러운 초안을 작성하세요. 반환은 JSON 하나만 허용하며 형식은 {"draft": string, "evidenceSummary": string[]} 입니다.',
+      },
+      {
+        role: 'user',
+        content: `${context}
+
+[작성 문항]
+${questionText}
+
+[글자 수 제한]
+${targetLength || '문항에 적힌 제한을 우선 따르세요.'}
+
+작성 기준:
+- 지원자 경험을 과장하지 말고, 저장된 경험과 Debate에서 확인된 소재를 우선 사용하세요.
+- 기업명/직무/인재상/JD 키워드가 자연스럽게 드러나야 합니다.
+- 문항이 지원동기, 성장과정, 직무역량, 입사 후 포부 중 무엇인지 판단해 구조를 달리하세요.
+- evidenceSummary에는 초안에 반영한 핵심 근거를 3~5개로 짧게 쓰세요.`,
+      },
+    ],
+  }, env);
+
+  return normalizeEssayResponse(parseJsonText(data.choices?.[0]?.message?.content));
+}
+
+async function handleReviseEssay(payload, env) {
+  const questionText = requireString(payload.questionText, 'questionText', 2000);
+  const currentDraft = requireString(payload.currentDraft, 'currentDraft', 5000);
+  const revisionRequest = requireString(payload.revisionRequest, 'revisionRequest', 1000);
+  const targetLength = optionalString(payload.targetLength, 40);
+  const context = buildEssayContext({
+    researchReport: payload.researchReport || {},
+    debateMessages: Array.isArray(payload.debateMessages) ? payload.debateMessages : [],
+    userExperiences: Array.isArray(payload.userExperiences) ? payload.userExperiences : [],
+  });
+
+  const data = await callOpenAI('/chat/completions', {
+    model: env.WRITE_MODEL || 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content:
+          '당신은 한국 취업 자기소개서 편집 코치입니다. 현재 초안을 사용자의 수정 요청에 맞게 다시 작성하세요. 기업 리서치, Debate 대화, MY 경험과 충돌하지 않게 수정하고, 반환은 JSON 하나만 허용합니다. 형식은 {"draft": string, "evidenceSummary": string[]} 입니다.',
+      },
+      {
+        role: 'user',
+        content: `${context}
+
+[작성 문항]
+${questionText}
+
+[글자 수 제한]
+${targetLength || '문항에 적힌 제한을 우선 따르세요.'}
+
+[현재 초안]
+${currentDraft}
+
+[수정 요청]
+${revisionRequest}
+
+수정 기준:
+- 요청한 방향을 우선 반영하되, 핵심 경험과 직무 연결성은 유지하세요.
+- 단순 첨삭 설명이 아니라 수정 완료된 전체 초안을 draft에 넣으세요.
+- evidenceSummary에는 이번 수정에서 강화한 근거를 3~5개로 짧게 쓰세요.`,
+      },
+    ],
+  }, env);
+
+  return normalizeEssayResponse(parseJsonText(data.choices?.[0]?.message?.content));
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -383,6 +511,14 @@ export default {
 
       if (url.pathname === '/chat') {
         return jsonResponse(await handleChat(payload, env));
+      }
+
+      if (url.pathname === '/write-draft') {
+        return jsonResponse(await handleWriteDraft(payload, env));
+      }
+
+      if (url.pathname === '/revise-essay') {
+        return jsonResponse(await handleReviseEssay(payload, env));
       }
 
       return jsonResponse({ error: 'Not found.' }, 404);

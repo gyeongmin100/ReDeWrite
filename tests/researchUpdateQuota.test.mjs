@@ -5,6 +5,7 @@ import {
   canUseResearchUpdate,
   countMonthlyResearchUpdates,
   appendResearchUpdateHistory,
+  getResearchUpdateUsageLabel,
 } from '../src/services/researchUpdateQuota.mjs';
 
 test('countMonthlyResearchUpdates counts current month updates across all researches', () => {
@@ -35,4 +36,17 @@ test('appendResearchUpdateHistory preserves report fields and appends timestamp'
     appendResearchUpdateHistory(report, '2026-05-05T12:00:00.000Z'),
     { company: '삼성전자', updateHistory: ['2026-05-01T00:00:00.000Z', '2026-05-05T12:00:00.000Z'] },
   );
+});
+
+test('getResearchUpdateUsageLabel formats remaining updates out of monthly limit', () => {
+  const research = {
+    researchReport: {
+      updateHistory: [
+        '2026-05-01T00:00:00.000Z',
+        '2026-05-02T00:00:00.000Z',
+      ],
+    },
+  };
+
+  assert.equal(getResearchUpdateUsageLabel([research], new Date('2026-05-10T00:00:00.000Z')), '8/10');
 });
