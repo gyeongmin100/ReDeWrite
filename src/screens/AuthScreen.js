@@ -10,13 +10,19 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { tokens as t } from '../theme/tokens';
 import { supabase } from '../services/supabaseClient';
 
-WebBrowser.maybeCompleteAuthSession();
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-const redirectTo = 'redewrite://auth/callback';
+GoogleSignin.configure({
+  webClientId: googleWebClientId,
+  offlineAccess: false,
+});
 
 function mapSessionToUser(session) {
   const email = session.user.email ?? '';
@@ -82,53 +88,51 @@ export default function AuthScreen({ onSignIn }) {
   };
 
   const handleGoogleSignIn = async () => {
+    if (!googleWebClientId) {
+      setError('Google Web Client ID가 설정되지 않았습니다.');
+      return;
+    }
+
     setGoogleLoading(true);
     setError('');
 
-    const { data, error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo,
-        skipBrowserRedirect: true,
-      },
-    });
+    try {
+      await GoogleSignin.hasPlayServices({
+        showPlayServicesUpdateDialog: true,
+      });
+      const userInfo = await GoogleSignin.signIn();
+      const { idToken, accessToken } = await GoogleSignin.getTokens();
 
-    if (signInError) {
-      setGoogleLoading(false);
-      setError('구글 로그인 시작에 실패했습니다.');
-      return;
-    }
-
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-
-    if (result.type !== 'success') {
-      setGoogleLoading(false);
-      if (result.type !== 'cancel') {
-        setError('구글 로그인이 완료되지 않았습니다.');
+      if (!idToken || !accessToken) {
+        throw new Error('Google token missing.');
       }
-      return;
-    }
 
-    const callbackUrl = new URL(result.url);
-    const code = callbackUrl.searchParams.get('code');
+      const { data, error: signInError } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+        access_token: accessToken,
+      });
 
-    if (!code) {
+      if (signInError || !data?.session) {
+        throw signInError ?? new Error('Supabase session missing.');
+      }
+
+      const session = data.session;
+      const googleEmail = userInfo?.user?.email;
+      onSignIn(mapSessionToUser({
+        ...session,
+        user: {
+          ...session.user,
+          email: session.user.email ?? googleEmail,
+        },
+      }));
+    } catch (err) {
+      if (err?.code !== statusCodes.SIGN_IN_CANCELLED) {
+        setError('Google 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } finally {
       setGoogleLoading(false);
-      setError('구글 로그인 응답을 확인할 수 없습니다.');
-      return;
     }
-
-    const { data: sessionData, error: exchangeError } =
-      await supabase.auth.exchangeCodeForSession(code);
-
-    setGoogleLoading(false);
-
-    if (exchangeError || !sessionData?.session) {
-      setError('구글 로그인 세션 생성에 실패했습니다.');
-      return;
-    }
-
-    onSignIn(mapSessionToUser(sessionData.session));
   };
 
   const isBusy = loading || googleLoading;
