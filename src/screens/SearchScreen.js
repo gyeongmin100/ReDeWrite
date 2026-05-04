@@ -6,7 +6,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
-import { runResearch } from '../services/aiService';
 
 const HINT_CHIPS = [
   '네이버 서비스기획 인턴',
@@ -15,7 +14,7 @@ const HINT_CHIPS = [
   '카카오 백엔드 개발',
 ];
 
-export default function SearchScreen({ navigation, addResearch }) {
+export default function SearchScreen({ navigation, startResearch }) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -25,8 +24,7 @@ export default function SearchScreen({ navigation, addResearch }) {
     setLoading(true);
     setError(null);
     try {
-      const researchItem = await runResearch(query.trim());
-      const companyId = await addResearch(researchItem);
+      const companyId = await startResearch(query.trim());
       navigation.navigate('Research', { companyId });
     } catch (err) {
       console.error('Research error:', err);
@@ -101,7 +99,7 @@ export default function SearchScreen({ navigation, addResearch }) {
         {loading && (
           <View style={s.loadingBox}>
             <ActivityIndicator size="small" color={t.primary} />
-            <Text style={s.loadingText}>AI가 기업 정보를 수집하고 있어요...</Text>
+            <Text style={s.loadingText}>AI가 기업 정보를 수집하고 있어요. 다른 화면으로 이동해도 정보 수집은 계속됩니다.</Text>
           </View>
         )}
 

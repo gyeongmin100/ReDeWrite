@@ -104,17 +104,24 @@ export default function ResearchListScreen({ navigation, researches, deleteResea
                     <Text style={s.companyName}>{r.name}</Text>
                     <Text style={s.roleText} numberOfLines={1}>{r.role}</Text>
                   </View>
-                  <TouchableOpacity
-                    style={s.deleteBtn}
-                    onPress={() => confirmDelete(r)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons name="trash-outline" size={17} color={t.danger} />
-                  </TouchableOpacity>
                   <Ionicons name="chevron-forward" size={16} color={t.faint} />
                 </View>
                 <View style={s.pipelineWrap}>
-                  <PipelineDots pipeline={r.pipeline} />
+                  <View style={s.pipelineRow}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <PipelineDots pipeline={r.pipeline} />
+                      {r.status === 'collecting' && (
+                        <Text style={s.collectingText}>정보 수집 중 · 다른 화면으로 이동해도 계속됩니다</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={s.deleteBtn}
+                      onPress={() => confirmDelete(r)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={17} color={t.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </TouchableOpacity>
             ))}
@@ -148,10 +155,17 @@ const s = StyleSheet.create({
   logoText: { fontSize: 16, fontWeight: '700', color: t.primary },
   companyName: { fontSize: 14, fontWeight: '700', color: t.ink, marginBottom: 2 },
   roleText: { fontSize: 12, color: t.muted },
-  deleteBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
 
   // 파이프라인 dots
   pipelineWrap: { paddingTop: 4, borderTopWidth: 1, borderTopColor: t.border },
+  pipelineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  deleteBtn: {
+    width: 34, height: 34, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#FFF5F5', borderWidth: 1, borderColor: '#FECACA',
+    flexShrink: 0,
+  },
+  collectingText: { marginTop: 6, fontSize: 11, color: t.primary, lineHeight: 16 },
   dots: { flexDirection: 'row', alignItems: 'center', paddingTop: 10 },
   dotItem: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   dot: {

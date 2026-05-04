@@ -7,6 +7,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 
 import { tokens as t } from '../theme/tokens';
 import { supabase } from '../services/supabaseClient';
+import { runResearch } from '../services/aiService';
 
 import AuthScreen from '../screens/AuthScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -44,7 +45,15 @@ function HomeStack({ researches, user }) {
   );
 }
 
-function ResearchStack({ researches, updateResearch, addResearch, deleteResearch, user }) {
+function ResearchStack({
+  researches,
+  updateResearch,
+  startResearch,
+  refreshResearch,
+  deleteResearch,
+  collectingResearchIds,
+  user,
+}) {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="ResearchList">
@@ -58,7 +67,7 @@ function ResearchStack({ researches, updateResearch, addResearch, deleteResearch
         )}
       </Stack.Screen>
       <Stack.Screen name="Search">
-        {props => <SearchScreen {...props} addResearch={addResearch} />}
+        {props => <SearchScreen {...props} startResearch={startResearch} />}
       </Stack.Screen>
       <Stack.Screen name="Research">
         {props => <ResearchScreen {...props} researches={researches} />}
@@ -69,6 +78,8 @@ function ResearchStack({ researches, updateResearch, addResearch, deleteResearch
             {...props}
             researches={researches}
             updateResearch={updateResearch}
+            refreshResearch={refreshResearch}
+            collectingResearchIds={collectingResearchIds}
             user={user}
           />
         )}
@@ -97,7 +108,17 @@ function ResearchStack({ researches, updateResearch, addResearch, deleteResearch
   );
 }
 
-function MainTabs({ researches, updateResearch, addResearch, deleteResearch, user, onSignOut, onUpdateUser }) {
+function MainTabs({
+  researches,
+  updateResearch,
+  startResearch,
+  refreshResearch,
+  deleteResearch,
+  collectingResearchIds,
+  user,
+  onSignOut,
+  onUpdateUser,
+}) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -151,8 +172,10 @@ function MainTabs({ researches, updateResearch, addResearch, deleteResearch, use
           <ResearchStack
             researches={researches}
             updateResearch={updateResearch}
-            addResearch={addResearch}
+            startResearch={startResearch}
+            refreshResearch={refreshResearch}
             deleteResearch={deleteResearch}
+            collectingResearchIds={collectingResearchIds}
             user={user}
           />
         )}
@@ -171,6 +194,7 @@ export default function AppNavigator() {
   const [authedUser, setAuthedUser] = useState(null);
   const [user, setUser] = useState({ id: '', name: '', major: '', email: '', experiences: [] });
   const [researches, setResearches] = useState([]);
+  const [collectingResearchIds, setCollectingResearchIds] = useState([]);
 
   const loadUserData = async (userId) => {
     // profiles 로드
@@ -275,6 +299,113 @@ export default function AppNavigator() {
     return companyId;
   };
 
+  const markCollecting = (companyId, collecting) => {
+    setCollectingResearchIds(prev => {
+      const set = new Set(prev);
+      if (collecting) {
+        set.add(companyId);
+      } else {
+        set.delete(companyId);
+      }
+      return Array.from(set);
+    });
+  };
+
+  const persistResearchInsert = (research) => {
+    if (!authedUser) return;
+
+    supabase.from('researches').insert({
+      user_id: authedUser.id,
+      company_id: research.companyId,
+      name: research.name,
+      role: research.role,
+      pipeline: research.pipeline,
+      completed_steps: research.completedSteps,
+      research_report: research.researchReport,
+    }).then(({ error }) => {
+      if (error) console.warn('Research save error:', error.message);
+    });
+  };
+
+  const startResearch = async (query) => {
+    const companyId = `research-${Date.now()}`;
+    const now = new Date().toISOString();
+    const pendingResearch = {
+      companyId,
+      name: '정보 수집 중',
+      role: query,
+      pipeline: ['active', 'pending', 'pending'],
+      completedSteps: 1,
+      researchReport: null,
+      readResult: null,
+      bestFit: null,
+      essay: null,
+      createdAt: now,
+      status: 'collecting',
+      query,
+    };
+
+    setResearches(prev => [pendingResearch, ...prev]);
+    markCollecting(companyId, true);
+
+    runResearch(query).then(researchItem => {
+      const completed = {
+        ...pendingResearch,
+        name: researchItem.company,
+        role: researchItem.role,
+        researchReport: researchItem,
+        status: 'ready',
+      };
+
+      setResearches(prev =>
+        prev.map(r => (r.companyId === companyId ? completed : r))
+      );
+      persistResearchInsert(completed);
+    }).catch(error => {
+      console.warn('Research collect error:', error.message);
+      setResearches(prev =>
+        prev.map(r => (
+          r.companyId === companyId
+            ? { ...r, status: 'failed', errorMessage: '정보 수집에 실패했어요. 다시 시도해 주세요.' }
+            : r
+        ))
+      );
+    }).finally(() => {
+      markCollecting(companyId, false);
+    });
+
+    return companyId;
+  };
+
+  const refreshResearch = async (companyId, collect) => {
+    const research = researches.find(r => r.companyId === companyId);
+    if (!research || collectingResearchIds.includes(companyId)) return;
+
+    markCollecting(companyId, true);
+    setResearches(prev =>
+      prev.map(r => (r.companyId === companyId ? { ...r, status: 'collecting' } : r))
+    );
+
+    try {
+      const fetched = await collect(research.name, research.role, research.researchReport);
+      updateResearch(companyId, {
+        researchReport: fetched,
+        status: 'ready',
+      });
+    } catch (error) {
+      console.warn('Research refresh error:', error.message);
+      setResearches(prev =>
+        prev.map(r => (
+          r.companyId === companyId
+            ? { ...r, status: 'ready', errorMessage: '최신정보 업데이트에 실패했어요.' }
+            : r
+        ))
+      );
+    } finally {
+      markCollecting(companyId, false);
+    }
+  };
+
   const updateResearch = (companyId, patch) => {
     setResearches(prev =>
       prev.map(r => (r.companyId === companyId ? { ...r, ...patch } : r))
@@ -301,6 +432,7 @@ export default function AppNavigator() {
 
   const deleteResearch = (companyId) => {
     setResearches(prev => prev.filter(r => r.companyId !== companyId));
+    markCollecting(companyId, false);
 
     if (authedUser) {
       supabase.from('researches')
@@ -318,6 +450,7 @@ export default function AppNavigator() {
     setAuthedUser(null);
     setUser({ id: '', name: '', major: '', email: '', experiences: [] });
     setResearches([]);
+    setCollectingResearchIds([]);
   };
 
   const updateUserExperiences = async (experiences) => {
@@ -364,8 +497,10 @@ export default function AppNavigator() {
         <MainTabs
           researches={researches}
           updateResearch={updateResearch}
-          addResearch={addResearch}
+          startResearch={startResearch}
+          refreshResearch={refreshResearch}
           deleteResearch={deleteResearch}
+          collectingResearchIds={collectingResearchIds}
           user={user}
           onSignOut={handleSignOut}
           onUpdateUser={updateUserExperiences}

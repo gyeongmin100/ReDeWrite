@@ -65,6 +65,7 @@ export function normalizeResearchReport(report = {}) {
     news,
     culture: asTextArray(report.culture),
     sources,
+    updateHistory: Array.isArray(report.updateHistory) ? report.updateHistory : [],
   };
 }
 

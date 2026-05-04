@@ -8,6 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 import { chatWithAI } from '../services/aiService';
 import { buildQuickChips } from '../services/debateQuickChips.mjs';
+import {
+  buildInitialDebateMessages,
+  shouldShowWriteButton,
+} from '../services/debateStateUtils.mjs';
 
 export default function DebateScreen({ navigation, route, researches, updateResearch, user }) {
   const { companyId } = route.params;
@@ -16,17 +20,12 @@ export default function DebateScreen({ navigation, route, researches, updateRese
   const company = research?.name ?? report?.company ?? '기업';
   const role = research?.role ?? report?.role ?? '';
 
-  const initialMsg = {
-    role: 'assistant',
-    content: `${company} ${role} 리서치 완료!\n어떤 걸 먼저 분석할까요?`,
-  };
-
   const quickChips = buildQuickChips();
 
-  const [messages, setMessages] = useState([initialMsg]);
+  const [messages, setMessages] = useState(() => buildInitialDebateMessages(research));
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showWriteBtn, setShowWriteBtn] = useState(false);
+  const [showWriteBtn, setShowWriteBtn] = useState(() => shouldShowWriteButton(buildInitialDebateMessages(research)));
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -41,6 +40,7 @@ export default function DebateScreen({ navigation, route, researches, updateRese
     const userMsg = { role: 'user', content: trimmed };
     const nextMessages = [...messages, userMsg];
     setMessages(nextMessages);
+    updateResearch(companyId, { bestFit: { messages: nextMessages } });
     setInput('');
     setLoading(true);
 
@@ -51,16 +51,19 @@ export default function DebateScreen({ navigation, route, researches, updateRese
         user?.experiences ?? [],
       );
       const aiMsg = { role: 'assistant', content: aiText };
-      setMessages(prev => [...prev, aiMsg]);
+      const completedMessages = [...nextMessages, aiMsg];
+      setMessages(completedMessages);
+      updateResearch(companyId, { bestFit: { messages: completedMessages } });
       // 1회 이상 실제 대화 후 Write 버튼 표시
-      const userTurns = nextMessages.filter(m => m.role === 'user').length;
-      if (userTurns >= 1) setShowWriteBtn(true);
+      setShowWriteBtn(shouldShowWriteButton(completedMessages));
     } catch (err) {
       console.error('chatWithAI error:', err);
-      setMessages(prev => [...prev, {
+      const failedMessages = [...nextMessages, {
         role: 'assistant',
         content: '일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요.',
-      }]);
+      }];
+      setMessages(failedMessages);
+      updateResearch(companyId, { bestFit: { messages: failedMessages } });
     } finally {
       setLoading(false);
     }
