@@ -6,6 +6,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Image,
 } from 'react-native';
 import {
   GoogleSignin,
@@ -88,54 +89,29 @@ export default function AuthScreen({ onSignIn }) {
   return (
     <SafeAreaView style={s.root}>
       <View style={s.inner}>
-        <View style={s.top}>
-          <Text style={s.logo}>
-            Re<Text style={{ color: t.primary }}>De</Text>Write
-          </Text>
-          <Text style={s.headline}>경험을 가장 잘 보여주는 자소서</Text>
-          <Text style={s.sub}>
-            Read · Debate · Write 3단계로 인재상에 맞는 초안을 만듭니다.
-          </Text>
-
-          <View style={s.card}>
-            {[
-              { p: 'R', label: 'Read', sub: '인재상과 경험 매칭 분석' },
-              { p: 'D', label: 'Debate', sub: 'AI 토론으로 Best Fit 추출' },
-              { p: 'W', label: 'Write', sub: '근거 기반 자소서 초안 생성' },
-            ].map((item, i, arr) => (
-              <View key={item.p} style={[s.rdwRow, i < arr.length - 1 && s.rdwBorder]}>
-                <View style={s.rdwBadge}>
-                  <Text style={s.rdwBadgeText}>{item.p}</Text>
-                </View>
-                <View>
-                  <Text style={s.rdwLabel}>{item.label}</Text>
-                  <Text style={s.rdwSub}>{item.sub}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={s.bottom}>
-          <TouchableOpacity
-            style={[s.googleBtn, googleLoading && s.btnDisabled]}
-            onPress={handleGoogleSignIn}
-            disabled={googleLoading}
-            activeOpacity={0.8}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color={t.ink} />
-            ) : (
-              <Text style={s.googleBtnText}>Google로 계속하기</Text>
-            )}
-          </TouchableOpacity>
-
-          {error ? <Text style={s.errorText}>{error}</Text> : null}
-          <Text style={s.terms}>
-            계속 진행하면 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
-          </Text>
-          <Text style={s.powered}>Powered by Supabase Auth</Text>
-        </View>
+        <Text style={s.logo}>
+          Re<Text style={{ color: t.primary }}>De</Text>Write
+        </Text>
+        <Text style={s.headline}>시작하려는 당신의{'\n'}리서치 파트너</Text>
+        <TouchableOpacity
+          style={[s.googleBtn, googleLoading && s.btnDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={googleLoading}
+          activeOpacity={0.8}
+        >
+          {googleLoading ? (
+            <ActivityIndicator color={t.ink} />
+          ) : (
+            <View style={s.googleBtnInner}>
+              <Image
+                source={{ uri: 'https://www.google.com/images/branding/googleg/1x/googleg_standard_color_128dp.png' }}
+                style={s.googleLogo}
+              />
+              <Text style={s.googleBtnText}>Google로 로그인</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        {error ? <Text style={s.errorText}>{error}</Text> : null}
       </View>
     </SafeAreaView>
   );
@@ -146,29 +122,11 @@ const s = StyleSheet.create({
   inner: {
     flex: 1,
     paddingHorizontal: 28,
-    paddingTop: 40,
-    paddingBottom: 36,
-    justifyContent: 'space-between',
-  },
-  top: { flex: 1, justifyContent: 'center' },
-  logo: { fontSize: 26, fontWeight: '700', color: t.ink, marginBottom: 32 },
-  headline: { fontSize: 30, fontWeight: '700', color: t.ink, lineHeight: 38, marginBottom: 12 },
-  sub: { fontSize: 14, color: t.muted, lineHeight: 22, marginBottom: 32 },
-  card: { backgroundColor: t.surface, borderRadius: 18, borderWidth: 1, borderColor: t.border, padding: 18 },
-  rdwRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
-  rdwBorder: { borderBottomWidth: 1, borderBottomColor: t.border },
-  rdwBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: t.primary,
-    alignItems: 'center',
     justifyContent: 'center',
+    gap: 24,
   },
-  rdwBadgeText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  rdwLabel: { fontSize: 13, fontWeight: '700', color: t.ink },
-  rdwSub: { fontSize: 11, color: t.muted, marginTop: 2 },
-  bottom: { gap: 8 },
+  logo: { fontSize: 40, fontWeight: '700', color: t.ink },
+  headline: { fontSize: 18, fontWeight: '500', color: t.muted, lineHeight: 26 },
   googleBtn: {
     height: 52,
     borderRadius: 14,
@@ -178,6 +136,8 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  googleBtnInner: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  googleLogo: { width: 20, height: 20 },
   googleBtnText: { fontSize: 15, fontWeight: '700', color: t.ink },
   btnDisabled: { opacity: 0.5 },
   errorText: { fontSize: 12, color: t.danger, textAlign: 'center' },
