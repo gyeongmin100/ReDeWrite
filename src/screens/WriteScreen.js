@@ -22,7 +22,7 @@ import {
   buildEssayPayload,
   buildEssayShareText,
   undoEssayRevision,
-} from '../services/essayUtils.mjs';
+} from '../services/essayUtils.js';
 
 export default function WriteScreen({ navigation, route, researches, updateResearch, user }) {
   const { companyId } = route.params;

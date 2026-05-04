@@ -7,11 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 import { chatWithAI } from '../services/aiService';
-import { buildQuickChips } from '../services/debateQuickChips.mjs';
+import { buildQuickChips } from '../services/debateQuickChips.js';
 import {
   buildInitialDebateMessages,
   shouldShowWriteButton,
-} from '../services/debateStateUtils.mjs';
+} from '../services/debateStateUtils.js';
 
 export default function DebateScreen({ navigation, route, researches, updateResearch, user }) {
   const { companyId } = route.params;

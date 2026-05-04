@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { normalizeResearchReport } from './researchReportUtils.mjs';
+import { normalizeResearchReport } from './researchReportUtils.js';
 
 const AI_WORKER_URL = process.env.EXPO_PUBLIC_AI_WORKER_URL;
 

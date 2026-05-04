@@ -6,12 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 import { collectCompanyInfo } from '../services/aiService';
-import { normalizeResearchReport } from '../services/researchReportUtils.mjs';
+import { normalizeResearchReport } from '../services/researchReportUtils.js';
 import {
   appendResearchUpdateHistory,
   canUseResearchUpdate,
   getResearchUpdateUsageLabel,
-} from '../services/researchUpdateQuota.mjs';
+} from '../services/researchUpdateQuota.js';
 
 function InsightList({ items }) {
   if (!items?.length) return null;

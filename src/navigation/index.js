@@ -8,7 +8,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { tokens as t } from '../theme/tokens';
 import { supabase } from '../services/supabaseClient';
 import { runResearch } from '../services/aiService';
-import { buildProfileUpsertPayload } from '../services/profilePersistence.mjs';
+import { buildProfileUpsertPayload } from '../services/profilePersistence.js';
 
 import AuthScreen from '../screens/AuthScreen';
 import HomeScreen from '../screens/HomeScreen';

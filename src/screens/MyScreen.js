@@ -9,7 +9,7 @@ import { tokens as t } from '../theme/tokens';
 import {
   getNextEditingIndexAfterDelete,
   getSavedExperiences,
-} from '../services/experienceEditorUtils.mjs';
+} from '../services/experienceEditorUtils.js';
 
 export default function MyScreen({ user, onSignOut, onUpdateUser }) {
   const [addingExp, setAddingExp] = useState(false);
