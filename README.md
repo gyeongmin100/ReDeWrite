@@ -28,10 +28,11 @@ https://github.com/user-attachments/assets/f93df9a1-ce24-4c72-81a0-0023ce78b756
 
 ## 기술 스택
 
-- **앱**: React Native (Expo 54), React Navigation
-- **인증/DB**: Supabase (Google 로그인 지원)
-- **AI 백엔드**: Vercel Serverless Functions (`worker/`) — OpenAI API 프록시
-- **빌드/배포**: EAS Build, expo-updates (OTA 업데이트)
+- **앱**: React Native (Expo 54)
+- **AI**: OpenAI API
+- **백엔드 서버**: Vercel (`worker/`) — OpenAI API 키 보호를 위한 중계 서버
+- **인증/DB**: Supabase — Google 로그인, 사용자별 데이터 저장
+- **빌드**: Expo 환경에서 Gradle 로컬 빌드 (APK/AAB)
 
 ## 프로젝트 구조
 
