@@ -30,11 +30,11 @@ https://github.com/user-attachments/assets/f93df9a1-ce24-4c72-81a0-0023ce78b756
 
 | 구분 | 기술 | 용도 |
 |---|---|---|
-| App | React Native (Expo 54) | 안드로이드 앱 UI 및 화면 구성 |
+| App | React Native (Expo SDK 54) | 안드로이드 앱 UI 및 화면 구성 |
 | AI | OpenAI API | 기업 리서치, 토론, 자소서 초안 생성 |
-| Backend | Vercel Serverless Functions | AI API 중계 서버 (`worker/`) |
+| Backend | Vercel Functions | AI API 중계 서버 (`worker/`) |
 | Auth / DB | Supabase | Google 로그인, 사용자 데이터 저장 |
-| Build | Expo + Gradle (로컬 빌드) | Expo 환경에서 APK / AAB 패키징 |
+| Build | Expo Prebuild + Gradle (로컬 빌드) | 네이티브 프로젝트 생성 후 APK / AAB 패키징 |
 
 ## 프로젝트 구조
 
