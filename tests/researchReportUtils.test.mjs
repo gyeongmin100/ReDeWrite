@@ -19,7 +19,7 @@ test('normalizeResearchReport preserves professional sections and strips display
     news: [
       {
         title: '삼성전자, AI 반도체 투자 확대',
-        summary: 'AI 반도체 경쟁력 강화를 위한 투자를 발표했다. https://example.com/news',
+        summary: 'AI 반도체 경쟁력 강화를 위한 투자를 발표했다. 출처: kakaocrop.com https://example.com/news',
         date: '2026-05-01',
         url: 'https://example.com/news',
         source: 'Example News',
@@ -37,7 +37,30 @@ test('normalizeResearchReport preserves professional sections and strips display
   assert.equal(report.hiringSignals[0], '글로벌 협업 경험을 강조해야 한다.');
   assert.equal(report.risks[0], '메모리 업황 변동성을 고려해야 한다.');
   assert.equal(report.news[0].summary.includes('https://'), false);
+  assert.equal(report.news[0].summary.includes('kakaocrop.com'), false);
+  assert.equal(report.news[0].summary.includes('출처'), false);
   assert.equal('url' in report.news[0], false);
   assert.equal('source' in report.news[0], false);
   assert.deepEqual(report.sources, []);
+});
+
+test('normalizeResearchReport converts markdown links to plain text before display', () => {
+  const report = normalizeResearchReport({
+    company: '카카오',
+    role: '서비스기획',
+    summary: '사업 재편 내용은 [카카오 IR](https://example.com/ir)을 참고하면 된다 ([](https://kakaocrop.com)).',
+    traits: ['[사용자 중심](https://example.com/trait)', '[](https://kakaocrop.com)'],
+    news: [
+      {
+        title: '[카카오, 서비스 개편](https://example.com/news)',
+        summary: '신규 기능을 공개했다 ([](https://kakaocrop.com)).',
+        date: '2026-05-01',
+      },
+    ],
+  });
+
+  assert.equal(report.summary, '사업 재편 내용은 카카오 IR을 참고하면 된다.');
+  assert.deepEqual(report.traits, ['사용자 중심']);
+  assert.equal(report.news[0].title, '카카오, 서비스 개편');
+  assert.equal(report.news[0].summary, '신규 기능을 공개했다.');
 });

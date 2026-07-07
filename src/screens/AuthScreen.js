@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   GoogleSignin,
   statusCodes,
@@ -141,6 +141,5 @@ const s = StyleSheet.create({
   googleBtnText: { fontSize: 15, fontWeight: '700', color: t.ink },
   btnDisabled: { opacity: 0.5 },
   errorText: { fontSize: 12, color: t.danger, textAlign: 'center' },
-  terms: { fontSize: 11, color: t.faint, textAlign: 'center', lineHeight: 17 },
-  powered: { fontSize: 10, color: t.faint, textAlign: 'center' },
+
 });

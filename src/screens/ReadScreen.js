@@ -7,11 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
 import { collectCompanyInfo } from '../services/aiService';
 import { normalizeResearchReport } from '../services/researchReportUtils.js';
-import {
-  appendResearchUpdateHistory,
-  canUseResearchUpdate,
-  getResearchUpdateUsageLabel,
-} from '../services/researchUpdateQuota.js';
+import { appendResearchUpdateHistory } from '../services/researchUpdateQuota.js';
+import { PIPELINE_AFTER_READ } from '../constants/researchStages';
 
 function InsightList({ items }) {
   if (!items?.length) return null;
@@ -49,7 +46,7 @@ export default function ReadScreen({
   updateResearch,
   refreshResearch,
   collectingResearchIds = [],
-  user,
+
 }) {
   const { companyId } = route.params;
   const research = researches.find(r => r.companyId === companyId);
@@ -60,9 +57,23 @@ export default function ReadScreen({
   const role = research?.role ?? rawReport?.role ?? '';
   const report = rawReport ? normalizeResearchReport({ company: companyName, role, ...rawReport }) : null;
   const loading = collectingResearchIds.includes(companyId) || research?.status === 'collecting';
-  const updateUsageLabel = getResearchUpdateUsageLabel(researches);
-  const canUpdate = canUseResearchUpdate(researches);
+  const canUpdate = true;
   const displayError = error || research?.errorMessage;
+  const emptyTitle = loading
+    ? '기업 리포트를 만들고 있습니다'
+    : displayError
+      ? '기업 리포트를 만들지 못했습니다'
+      : '기업 리포트를 만들어 보세요';
+  const emptyDesc = loading
+    ? ''
+    : displayError
+      ? '잠시 후 다시 시도해 주세요.'
+      : '기업과 직무를 기준으로 리서치를 시작합니다.';
+  const primaryLabel = loading
+    ? '리포트 생성 중...'
+    : displayError
+      ? '다시 분석하기'
+      : '분석하기';
 
   const loadReport = async () => {
     setError(null);
@@ -86,14 +97,14 @@ export default function ReadScreen({
 
   const handleDebate = () => {
     updateResearch(companyId, {
-      pipeline: ['done', 'active', 'pending'],
+      pipeline: PIPELINE_AFTER_READ,
       completedSteps: Math.max(research?.completedSteps ?? 0, 1),
     });
     navigation.navigate('Debate', { companyId });
   };
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* 헤더 */}
         <View style={s.header}>
@@ -118,16 +129,15 @@ export default function ReadScreen({
                 <Ionicons name="refresh" size={14} color={t.faint} />
               )}
               <Text style={s.updateMiniText}>업데이트</Text>
-              <Text style={s.updateMiniCount}>{updateUsageLabel}</Text>
             </TouchableOpacity>
           )}
         </View>
         <Text style={s.role}>{role}</Text>
 
-        {loading && (
-          <View style={s.loadingNotice}>
-            <ActivityIndicator size="small" color={t.primary} />
-            <Text style={s.loadingNoticeText}>정보 수집 중입니다. 다른 화면으로 이동해도 정보 수집은 계속됩니다.</Text>
+        {displayError && (
+          <View style={s.errorBox}>
+            <Ionicons name="alert-circle-outline" size={14} color={t.danger} />
+            <Text style={s.errorText}>{displayError}</Text>
           </View>
         )}
 
@@ -137,15 +147,8 @@ export default function ReadScreen({
             <View style={s.emptyIcon}>
               <Ionicons name="document-text-outline" size={28} color={t.faint} />
             </View>
-            <Text style={s.emptyTitle}>기업 리포트가 없어요</Text>
-            <Text style={s.emptyDesc}>AI가 인재상, JD 키워드, 최근 뉴스를 조사합니다. 다른 화면으로 이동해도 정보 수집은 계속됩니다.</Text>
-
-            {displayError && (
-              <View style={s.errorBox}>
-                <Ionicons name="alert-circle-outline" size={14} color={t.danger} />
-                <Text style={s.errorText}>{displayError}</Text>
-              </View>
-            )}
+            {!loading ? <Text style={s.emptyTitle}>{emptyTitle}</Text> : null}
+            {emptyDesc ? <Text style={s.emptyDesc}>{emptyDesc}</Text> : null}
 
             <TouchableOpacity
               style={[s.primaryBtn, loading && { opacity: 0.6 }]}
@@ -156,12 +159,12 @@ export default function ReadScreen({
               {loading ? (
                 <>
                   <ActivityIndicator size="small" color="#fff" />
-                  <Text style={s.primaryBtnText}>AI가 조사 중...</Text>
+                  <Text style={s.primaryBtnText}>{primaryLabel}</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="sparkles" size={18} color="#fff" />
-                  <Text style={s.primaryBtnText}>AI로 기업 정보 불러오기</Text>
+                  <Text style={s.primaryBtnText}>{primaryLabel}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -265,7 +268,7 @@ export default function ReadScreen({
 
             {/* Debate 시작 버튼 */}
             <TouchableOpacity style={s.primaryBtn} onPress={handleDebate} activeOpacity={0.85}>
-              <Text style={s.primaryBtnText}>Debate 시작 →</Text>
+              <Text style={s.primaryBtnText}>Debate 시작</Text>
               <Ionicons name="arrow-forward" size={18} color="#fff" />
             </TouchableOpacity>
           </>
@@ -291,16 +294,11 @@ const s = StyleSheet.create({
     flexShrink: 0,
   },
   updateMiniText: { fontSize: 11, fontWeight: '600', color: t.faint },
-  updateMiniCount: { fontSize: 10, fontWeight: '700', color: t.faint },
-  loadingNotice: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: t.primarySoft, borderRadius: 12, borderWidth: 1, borderColor: t.primaryLight,
-    padding: 12, marginBottom: 14,
-  },
-  loadingNoticeText: { flex: 1, minWidth: 0, fontSize: 12, color: t.primary, lineHeight: 18, fontWeight: '600' },
+
+  loadingNoticeText: { fontSize: 12, color: t.muted, marginBottom: 12 },
 
   // 카드
-  card: { backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.border, padding: 16, marginBottom: 14 },
+  card: { backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.border, padding: 16, marginBottom: 14, overflow: 'hidden' },
   cardLabel: { fontSize: 11, fontWeight: '700', color: t.muted, letterSpacing: 0.8, marginBottom: 12 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   cardLabelInline: { fontSize: 11, fontWeight: '700', color: t.muted, letterSpacing: 0.8 },
@@ -312,13 +310,13 @@ const s = StyleSheet.create({
   updateBtnDisabled: { opacity: 0.45 },
 
   // 칩
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chipPrimary: { paddingHorizontal: 12, minHeight: 30, borderRadius: 999, backgroundColor: t.primarySoft, alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
-  chipPrimaryText: { fontSize: 13, fontWeight: '600', color: t.primary, flexShrink: 1 },
-  chipNeutral: { paddingHorizontal: 12, minHeight: 30, borderRadius: 999, backgroundColor: t.surfaceAlt, alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
-  chipNeutralText: { fontSize: 13, fontWeight: '600', color: t.inkSoft, flexShrink: 1 },
-  chipWarm: { paddingHorizontal: 12, minHeight: 30, borderRadius: 999, backgroundColor: t.debateBg, alignItems: 'center', justifyContent: 'center', maxWidth: '100%' },
-  chipWarmText: { fontSize: 13, fontWeight: '600', color: t.debateFg, flexShrink: 1 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'flex-start' },
+  chipPrimary: { paddingHorizontal: 12, paddingVertical: 7, minHeight: 30, borderRadius: 14, backgroundColor: t.primarySoft, alignSelf: 'flex-start', maxWidth: '100%' },
+  chipPrimaryText: { fontSize: 13, fontWeight: '600', color: t.primary, lineHeight: 18, flexShrink: 1, flexWrap: 'wrap' },
+  chipNeutral: { paddingHorizontal: 12, paddingVertical: 7, minHeight: 30, borderRadius: 14, backgroundColor: t.surfaceAlt, alignSelf: 'flex-start', maxWidth: '100%' },
+  chipNeutralText: { fontSize: 13, fontWeight: '600', color: t.inkSoft, lineHeight: 18, flexShrink: 1, flexWrap: 'wrap' },
+  chipWarm: { paddingHorizontal: 12, paddingVertical: 7, minHeight: 30, borderRadius: 14, backgroundColor: t.debateBg, alignSelf: 'flex-start', maxWidth: '100%' },
+  chipWarmText: { fontSize: 13, fontWeight: '600', color: t.debateFg, lineHeight: 18, flexShrink: 1, flexWrap: 'wrap' },
 
   // 뉴스
   newsItem: { paddingBottom: 10 },
@@ -326,19 +324,20 @@ const s = StyleSheet.create({
   newsTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4 },
   newsTitle: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: '600', color: t.ink, lineHeight: 19 },
   newsDate: { fontSize: 11, color: t.faint, flexShrink: 0 },
-  newsSummary: { fontSize: 12, color: t.muted, lineHeight: 18 },
+  newsSummary: { fontSize: 12, color: t.muted, lineHeight: 18, flexShrink: 1 },
 
   // 빈 상태
   emptyCard: {
     backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.border,
-    padding: 24, alignItems: 'center', marginBottom: 14,
+    paddingHorizontal: 20, paddingVertical: 24, alignItems: 'center', marginBottom: 14,
+    overflow: 'hidden',
   },
   emptyIcon: {
     width: 56, height: 56, borderRadius: 16, backgroundColor: t.surfaceAlt,
     alignItems: 'center', justifyContent: 'center', marginBottom: 14,
   },
-  emptyTitle: { fontSize: 15, fontWeight: '700', color: t.ink, marginBottom: 6 },
-  emptyDesc: { fontSize: 13, color: t.muted, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  emptyTitle: { maxWidth: '100%', fontSize: 15, fontWeight: '700', color: t.ink, marginBottom: 6, textAlign: 'center', lineHeight: 21 },
+  emptyDesc: { maxWidth: '100%', fontSize: 13, color: t.muted, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
   errorBox: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: '#FFF5F5', borderRadius: 10, borderWidth: 1, borderColor: '#FECACA',
@@ -348,8 +347,9 @@ const s = StyleSheet.create({
 
   // 버튼
   primaryBtn: {
-    height: 52, borderRadius: 14, backgroundColor: t.primary,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4,
+    minHeight: 52, minWidth: 180, maxWidth: '100%', borderRadius: 14, backgroundColor: t.primary,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingHorizontal: 18, paddingVertical: 12, marginTop: 4,
   },
-  primaryBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  primaryBtnText: { fontSize: 15, fontWeight: '600', color: '#fff', textAlign: 'center', lineHeight: 20, flexShrink: 1 },
 });

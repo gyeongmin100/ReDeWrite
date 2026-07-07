@@ -16,23 +16,58 @@ async function getAccessToken() {
   return data.session.access_token;
 }
 
+const WORKER_REQUEST_TIMEOUT_MS = 120000;
+
 async function callWorker(path, payload) {
   const url = getWorkerUrl(path);
   if (!url) {
     throw new Error('AI Worker가 설정되지 않았습니다.');
   }
 
+  const startedAt = Date.now();
+  const payloadSize = JSON.stringify(payload || {}).length;
   const accessToken = await getAccessToken();
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  const authDurationMs = Date.now() - startedAt;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), WORKER_REQUEST_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    console.warn('AI worker request exception:', {
+      path,
+      durationMs: Date.now() - startedAt,
+      authDurationMs,
+      payloadSize,
+      errorName: error?.name,
+      errorMessage: error?.message,
+    });
+    if (error?.name === 'AbortError') {
+      throw new Error('요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = await res.json().catch(() => ({}));
+  console.info('AI worker request timing:', {
+    path,
+    status: res.status,
+    durationMs: Date.now() - startedAt,
+    authDurationMs,
+    payloadSize,
+    responseSize: JSON.stringify(data || {}).length,
+  });
 
   if (!res.ok) {
     throw new Error(data.error || `AI Worker error: ${res.status}`);
@@ -55,11 +90,7 @@ export async function collectCompanyInfo(company, role) {
   });
 }
 
-export async function runResearch(userInput) {
-  const { company, role } = await parseIntent(userInput);
-  const report = await collectCompanyInfo(company, role);
-  return { company, role, ...report };
-}
+
 
 export async function chatWithAI(messages, researchReport, userExperiences) {
   const data = await callWorker('/chat', {
@@ -80,6 +111,20 @@ export async function generateEssayDraft({
   return callWorker('/write-draft', {
     questionText,
     targetLength,
+    researchReport,
+    debateMessages,
+    userExperiences,
+  });
+}
+
+export async function generateEssayDrafts({
+  questions,
+  researchReport,
+  debateMessages,
+  userExperiences,
+}) {
+  return callWorker('/write-drafts', {
+    questions,
     researchReport,
     debateMessages,
     userExperiences,

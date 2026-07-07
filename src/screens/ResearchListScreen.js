@@ -56,7 +56,7 @@ export default function ResearchListScreen({ navigation, researches, deleteResea
   };
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top']}>
       <View style={s.inner}>
         {/* 헤더 */}
         <View style={s.header}>
@@ -111,12 +111,15 @@ export default function ResearchListScreen({ navigation, researches, deleteResea
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <PipelineDots pipeline={r.pipeline} />
                       {r.status === 'collecting' && (
-                        <Text style={s.collectingText}>정보 수집 중 · 다른 화면으로 이동해도 계속됩니다</Text>
+                        <Text style={s.collectingText}>리포트 생성 중</Text>
                       )}
                     </View>
                     <TouchableOpacity
                       style={s.deleteBtn}
-                      onPress={() => confirmDelete(r)}
+                      onPress={(event) => {
+                        event.stopPropagation?.();
+                        confirmDelete(r);
+                      }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Ionicons name="trash-outline" size={17} color={t.danger} />
@@ -165,7 +168,7 @@ const s = StyleSheet.create({
     backgroundColor: '#FFF5F5', borderWidth: 1, borderColor: '#FECACA',
     flexShrink: 0,
   },
-  collectingText: { marginTop: 6, fontSize: 11, color: t.primary, lineHeight: 16 },
+  collectingText: { marginTop: 6, fontSize: 11, fontWeight: '600', color: t.primary, lineHeight: 16 },
   dots: { flexDirection: 'row', alignItems: 'center', paddingTop: 10 },
   dotItem: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   dot: {

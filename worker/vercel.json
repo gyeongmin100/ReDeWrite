@@ -1,0 +1,37 @@
+{
+  "rewrites": [
+    {
+      "source": "/privacy",
+      "destination": "/api/privacy"
+    },
+    {
+      "source": "/parse-intent",
+      "destination": "/api/parse-intent"
+    },
+    {
+      "source": "/collect-company-info",
+      "destination": "/api/collect-company-info"
+    },
+    {
+      "source": "/chat",
+      "destination": "/api/chat"
+    },
+    {
+      "source": "/write-draft",
+      "destination": "/api/write-draft"
+    },
+    {
+      "source": "/write-drafts",
+      "destination": "/api/write-drafts"
+    },
+    {
+      "source": "/revise-essay",
+      "destination": "/api/revise-essay"
+    }
+  ],
+  "functions": {
+    "api/[...path].js": {
+      "maxDuration": 300
+    }
+  }
+}

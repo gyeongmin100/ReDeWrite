@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
 } from 'react-native';
@@ -10,6 +10,15 @@ import { mockCompanies } from '../data/mockData';
 export default function ResearchScreen({ navigation, route, researches }) {
   const { companyId } = route.params;
   const research = researches.find(r => r.companyId === companyId);
+
+  useEffect(() => {
+    if (!research) {
+      navigation.replace('ResearchList');
+    }
+  }, [navigation, research]);
+
+  if (!research) return null;
+
   // mockCompanies에 없는 AI 생성 리서치는 research 필드로 fallback
   const _mc = mockCompanies.find(c => c.id === companyId);
   const company = _mc ?? {
@@ -25,7 +34,7 @@ export default function ResearchScreen({ navigation, route, researches }) {
   ];
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>

@@ -6,89 +6,66 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { tokens as t } from '../theme/tokens';
-import { chatWithAI } from '../services/aiService';
+import { PIPELINE_AFTER_DEBATE } from '../constants/researchStages';
 import { buildQuickChips } from '../services/debateQuickChips.js';
 import {
   buildInitialDebateMessages,
   shouldShowWriteButton,
 } from '../services/debateStateUtils.js';
 
-export default function DebateScreen({ navigation, route, researches, updateResearch, user }) {
+export default function DebateScreen({
+  navigation,
+  route,
+  researches,
+  updateResearch,
+  sendDebateMessage,
+  resumeDebateReply,
+}) {
   const { companyId } = route.params;
   const research = researches.find(r => r.companyId === companyId);
-  const report = research?.researchReport ?? null;
-  const company = research?.name ?? report?.company ?? '기업';
-  const role = research?.role ?? report?.role ?? '';
-
   const quickChips = buildQuickChips();
+  const messages = buildInitialDebateMessages(research);
+  const loading = Boolean(research?.bestFit?.pendingReply);
+  const showWriteBtn = shouldShowWriteButton(messages);
 
-  const [messages, setMessages] = useState(() => buildInitialDebateMessages(research));
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showWriteBtn, setShowWriteBtn] = useState(() => shouldShowWriteButton(buildInitialDebateMessages(research)));
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    resumeDebateReply?.(companyId);
+  }, [companyId, resumeDebateReply]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }, [messages, loading]);
 
-  const sendMessage = async (text) => {
+  const sendMessage = (text) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
-    const userMsg = { role: 'user', content: trimmed };
-    const nextMessages = [...messages, userMsg];
-    setMessages(nextMessages);
-    updateResearch(companyId, { bestFit: { messages: nextMessages } });
     setInput('');
-    setLoading(true);
-
-    try {
-      const aiText = await chatWithAI(
-        nextMessages.filter(m => m.role !== 'system'),
-        report,
-        user?.experiences ?? [],
-      );
-      const aiMsg = { role: 'assistant', content: aiText };
-      const completedMessages = [...nextMessages, aiMsg];
-      setMessages(completedMessages);
-      updateResearch(companyId, { bestFit: { messages: completedMessages } });
-      // 1회 이상 실제 대화 후 Write 버튼 표시
-      setShowWriteBtn(shouldShowWriteButton(completedMessages));
-    } catch (err) {
-      console.error('chatWithAI error:', err);
-      const failedMessages = [...nextMessages, {
-        role: 'assistant',
-        content: '일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요.',
-      }];
-      setMessages(failedMessages);
-      updateResearch(companyId, { bestFit: { messages: failedMessages } });
-    } finally {
-      setLoading(false);
-    }
+    sendDebateMessage?.(companyId, trimmed);
   };
 
   const handleQuickChip = (chip) => sendMessage(chip);
 
   const handleWriteNavigate = () => {
     updateResearch(companyId, {
-      bestFit: { messages },
-      pipeline: ['done', 'done', 'active'],
+      bestFit: { ...(research?.bestFit ?? {}), messages },
+      pipeline: PIPELINE_AFTER_DEBATE,
       completedSteps: Math.max(research?.completedSteps ?? 0, 2),
     });
     navigation.navigate('Write', { companyId });
   };
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        behavior="padding"
       >
         <View style={s.inner}>
-          {/* 헤더 */}
           <View style={s.header}>
             <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
               <Ionicons name="arrow-back" size={20} color={t.ink} />
@@ -99,7 +76,6 @@ export default function DebateScreen({ navigation, route, researches, updateRese
             </View>
           </View>
 
-          {/* 채팅 영역 */}
           <ScrollView
             ref={scrollRef}
             style={{ flex: 1 }}
@@ -109,7 +85,7 @@ export default function DebateScreen({ navigation, route, researches, updateRese
           >
             {messages.map((m, i) => (
               <View
-                key={i}
+                key={`${m.role}-${i}`}
                 style={[
                   s.bubbleWrap,
                   m.role === 'user' ? s.bubbleWrapUser : s.bubbleWrapAI,
@@ -133,7 +109,6 @@ export default function DebateScreen({ navigation, route, researches, updateRese
               </View>
             ))}
 
-            {/* 타이핑 인디케이터 */}
             {loading && (
               <View style={[s.bubbleWrap, s.bubbleWrapAI]}>
                 <View style={s.aiAvatar}>
@@ -149,20 +124,18 @@ export default function DebateScreen({ navigation, route, researches, updateRese
               </View>
             )}
 
-            {/* Write 이동 버튼 */}
             {showWriteBtn && !loading && (
               <TouchableOpacity
                 style={s.writeBtn}
                 onPress={handleWriteNavigate}
                 activeOpacity={0.85}
               >
-                <Text style={s.writeBtnText}>Write로 자소서 쓰기</Text>
+                <Text style={s.writeBtnText}>Write로 자소서 연결</Text>
                 <Ionicons name="arrow-forward" size={16} color="#fff" />
               </TouchableOpacity>
             )}
           </ScrollView>
 
-          {/* 빠른 선택 칩 - 항상 표시 (로딩 중 숨김) */}
           {!loading && (
             <ScrollView
               horizontal
@@ -183,7 +156,6 @@ export default function DebateScreen({ navigation, route, researches, updateRese
             </ScrollView>
           )}
 
-          {/* 입력창 */}
           <View style={s.inputRow}>
             <TextInput
               ref={inputRef}
@@ -195,7 +167,7 @@ export default function DebateScreen({ navigation, route, researches, updateRese
               multiline
               maxLength={300}
               editable={!loading}
-              returnKeyType="send"
+              returnKeyType="default"
               blurOnSubmit={false}
             />
             <TouchableOpacity
@@ -219,8 +191,6 @@ export default function DebateScreen({ navigation, route, researches, updateRese
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: t.bg },
   inner: { flex: 1, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
-
-  // 헤더
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   tag: { flex: 1, fontSize: 10, fontWeight: '700', color: t.debateFg, letterSpacing: 1.2 },
@@ -229,8 +199,6 @@ const s = StyleSheet.create({
     backgroundColor: t.debateBg, alignItems: 'center', justifyContent: 'center',
   },
   liveChipText: { fontSize: 11, fontWeight: '600', color: t.debateFg },
-
-  // 채팅
   chatContent: { paddingBottom: 16, gap: 10 },
   bubbleWrap: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   bubbleWrapAI: { justifyContent: 'flex-start' },
@@ -251,13 +219,9 @@ const s = StyleSheet.create({
   },
   bubbleText: { fontSize: 14, color: t.ink, lineHeight: 22 },
   bubbleTextUser: { color: '#fff' },
-
-  // 타이핑
   typingBubble: { paddingVertical: 14 },
   typingDots: { flexDirection: 'row', gap: 5, alignItems: 'center' },
   typingDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: t.faint },
-
-  // 빠른 선택 칩
   chipsScroll: { flexGrow: 0, paddingVertical: 8, borderTopWidth: 1, borderTopColor: t.border },
   quickChipsRow: { gap: 8, paddingRight: 4, paddingLeft: 0 },
   quickChip: {
@@ -266,16 +230,12 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   quickChipText: { fontSize: 13, fontWeight: '500', color: t.inkSoft },
-
-  // Write 버튼
   writeBtn: {
     height: 48, borderRadius: 14, backgroundColor: t.primaryDark,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     marginTop: 8, alignSelf: 'stretch',
   },
   writeBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-
-  // 입력창
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 8,
     paddingTop: 8, borderTopWidth: 1, borderTopColor: t.border,

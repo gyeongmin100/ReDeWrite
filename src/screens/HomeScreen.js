@@ -23,7 +23,7 @@ export default function HomeScreen({ navigation, user, researches }) {
   const featured = researches[0];
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top']}>
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>
@@ -32,9 +32,9 @@ export default function HomeScreen({ navigation, user, researches }) {
 
         {/* Greeting */}
         <View style={s.greeting}>
-          <View>
+          <View style={s.greetingLeft}>
             <Text style={s.greetSub}>안녕하세요</Text>
-            <Text style={s.greetName}>{user.name}님 👋</Text>
+            <Text style={s.greetName} numberOfLines={1}>{user.name}님 👋</Text>
           </View>
           <View style={s.avatar}>
             <Text style={s.avatarText}>{user.name?.[0] ?? '?'}</Text>
@@ -145,7 +145,8 @@ const s = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingBottom: 32 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, marginBottom: 22 },
   logo: { fontSize: 19, fontWeight: '700', color: t.ink, letterSpacing: -0.4 },
-  greeting: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  greeting: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 },
+  greetingLeft: { flex: 1, minWidth: 0 },
   greetSub: { fontSize: 12, color: t.muted, marginBottom: 4 },
   greetName: { fontSize: 26, fontWeight: '700', color: t.ink, letterSpacing: -0.5 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: t.primarySoft, alignItems: 'center', justifyContent: 'center' },

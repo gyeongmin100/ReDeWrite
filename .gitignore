@@ -45,3 +45,21 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# build artifacts
+*.apk
+*.aab
+*.apks
+*.jar
+.aab-inspect*/
+.apk-inspect/
+.apks-inspect/
+.universal-apk-inspect/
+%SystemDrive%/
+
+# logs
+*.log
+
+# IDE / tooling
+.idea/
+.claude/

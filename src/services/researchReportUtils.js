@@ -5,7 +5,19 @@ function asText(value) {
 }
 
 function stripUrls(value) {
-  return asText(value).replace(/https?:\/\/\S+/g, '').replace(/\s{2,}/g, ' ').trim();
+  return asText(value)
+    .replace(/\[([^\]]+)\]\((?:https?:\/\/|www\.)[^)]*\)/gi, '$1')
+    .replace(/\[\]\((?:https?:\/\/|www\.)[^)]*\)/gi, '')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?\b/gi, '')
+    .replace(/(?:출처|source)\s*[:：]?\s*/gi, '')
+    .replace(/[\s([{]*[\[\]]+[\s)\]}]*/g, ' ')
+    .replace(/\s+([.,!?])/g, '$1')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.。])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function asTextArray(value, maxItems = MAX_ITEMS) {

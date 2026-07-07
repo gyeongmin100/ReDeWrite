@@ -1,92 +1,255 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   Share,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   View,
-  StyleSheet,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
 import { tokens as t } from '../theme/tokens';
-import { generateEssayDraft, reviseEssayDraft } from '../services/aiService';
+import { PIPELINE_COMPLETE } from '../constants/researchStages';
 import {
   applyEssayRevision,
   buildEssayPayload,
   buildEssayShareText,
+  buildWriteState,
+  countEssayChars,
+  getEssayLengthTarget,
+  getWriteStageAfterStateChange,
+  hasAllRequiredEssaysComplete,
+  hasTemporaryWriteQuestions,
+  normalizeWriteState,
+  redoEssayRevision,
+  shouldAutosaveWriteQuestions,
   undoEssayRevision,
 } from '../services/essayUtils.js';
 
-let _idCounter = 0;
-const makeId = () => `q_${++_idCounter}_${Date.now()}`;
+let idCounter = 0;
+const makeId = () => `q_${++idCounter}_${Date.now()}`;
 
-function parseInitialState(research) {
-  if (research?.essays && Array.isArray(research.essays) && research.essays.length > 0) {
-    const qs =
+function getInitialWriteState(research) {
+  if (research?.essay) return normalizeWriteState(research.essay);
+
+  if (Array.isArray(research?.essays) && research.essays.length > 0) {
+    const questions =
       Array.isArray(research.questions) && research.questions.length === research.essays.length
         ? research.questions
-        : research.essays.map((e, i) => ({
-            id: `q_legacy_${i}`,
-            questionText: e?.questionText || '',
-            targetLength: e?.targetLength || '',
+        : research.essays.map((essay, index) => ({
+            id: `q_legacy_${index}`,
+            questionText: essay?.questionText || '',
+            targetLength: essay?.targetLength || '',
           }));
-    return { questions: qs, essays: research.essays };
+
+    return buildWriteState({ questions, essays: research.essays, pending: null });
   }
-  if (research?.essay?.draft) {
-    const q = {
-      id: makeId(),
-      questionText: research.essay.questionText || '',
-      targetLength: research.essay.targetLength || '',
-    };
-    return { questions: [q], essays: [research.essay] };
-  }
-  return {
+
+  return buildWriteState({
     questions: [{ id: makeId(), questionText: '', targetLength: '' }],
     essays: [null],
-  };
+    pending: null,
+  });
 }
 
-export default function WriteScreen({ navigation, route, researches, updateResearch, user }) {
+export default function WriteScreen({
+  navigation,
+  route,
+  researches,
+  updateResearch,
+  startWriteGenerateAll,
+  startWriteGenerateOne,
+  startWriteRevise,
+  resumeWriteTask,
+}) {
   const { companyId } = route.params;
   const research = researches.find(r => r.companyId === companyId);
   const companyName = research?.name || research?.researchReport?.company || '기업';
-  const report = research?.researchReport ?? null;
-  const debateMessages = research?.bestFit?.messages ?? [];
+  const initialState = getInitialWriteState(research);
 
-  const { questions: initQ, essays: initE } = parseInitialState(research);
-  const hasAnyDraft = initE.some(e => e?.draft);
-
-  const [questions, setQuestions] = useState(initQ);
-  const [essays, setEssays] = useState(initE);
-  const [stage, setStage] = useState(hasAnyDraft ? 'result' : 'input');
+  const [questions, setQuestions] = useState(initialState.questions);
+  const [essays, setEssays] = useState(initialState.essays);
+  const [stage, setStage] = useState(
+    hasAllRequiredEssaysComplete(initialState.questions, initialState.essays) ? 'result' : 'input',
+  );
   const [activeIdx, setActiveIdx] = useState(0);
-  const [draftText, setDraftText] = useState(initE[0]?.draft || '');
+  const [draftText, setDraftText] = useState(initialState.essays[0]?.draft || '');
   const [revisionRequest, setRevisionRequest] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [generatingIdx, setGeneratingIdx] = useState(-1);
+  const [loading, setLoading] = useState(initialState.pending?.status === 'pending');
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const autosaveReadyRef = useRef(false);
+  const lastAutosavedQuestionsRef = useRef(JSON.stringify(initialState.questions));
+  const autosaveTimerRef = useRef(null);
+  const savedWriteStateRef = useRef(initialState);
+  const generateAllPendingRef = useRef(false);
+  const editingQuestionsRef = useRef(false);
+  const revisionPendingRef = useRef(false);
+  const revisionPendingSeenRef = useRef(false);
+  const suppressNextResearchSyncRef = useRef(false);
+  const inputScrollRef = useRef(null);
+  const resultScrollRef = useRef(null);
+  const questionYRef = useRef({});
+  const focusedQuestionIdxRef = useRef(null);
+  const draftYRef = useRef(0);
+  const revisionYRef = useRef(0);
 
-  // 탭 전환 시 해당 문항의 초안으로 동기화
+  useEffect(() => {
+    const state = getInitialWriteState(research);
+    savedWriteStateRef.current = state;
+    if (suppressNextResearchSyncRef.current) {
+      suppressNextResearchSyncRef.current = false;
+      lastAutosavedQuestionsRef.current = JSON.stringify(state.questions);
+      return;
+    }
+    setQuestions(state.questions);
+    setEssays(state.essays);
+    lastAutosavedQuestionsRef.current = JSON.stringify(state.questions);
+    setLoading(state.pending?.status === 'pending');
+
+    if (state.pending?.status === 'failed') {
+      setError(state.pending.errorMessage || '자소서 생성에 실패했습니다. 다시 시도해 주세요.');
+    } else {
+      setError('');
+    }
+
+    const pending = state.pending;
+    const isPending = pending?.status === 'pending';
+    const isComplete = hasAllRequiredEssaysComplete(state.questions, state.essays);
+    const nextStage = getWriteStageAfterStateChange({
+      currentStage: stage,
+      previousGenerateAllPending: generateAllPendingRef.current,
+      pending,
+      isComplete,
+      isEditingQuestions: editingQuestionsRef.current,
+    });
+
+    if (!isPending) {
+      generateAllPendingRef.current = false;
+    }
+    if (nextStage === 'result') {
+      editingQuestionsRef.current = false;
+      if (stage !== 'result') {
+        setActiveIdx(0);
+        setDraftText(state.essays[0]?.draft || '');
+      }
+    }
+    if (nextStage !== stage) setStage(nextStage);
+    if (nextStage !== 'result' || stage === 'result') {
+      setDraftText(state.essays[activeIdx]?.draft || '');
+    }
+
+    if (revisionPendingRef.current && state.pending?.type === 'revise' && state.pending?.status === 'pending') {
+      revisionPendingSeenRef.current = true;
+    }
+
+    if (
+      revisionPendingRef.current
+      && revisionPendingSeenRef.current
+      && !state.pending
+      && state.essays[activeIdx]?.draft
+    ) {
+      revisionPendingRef.current = false;
+      revisionPendingSeenRef.current = false;
+      setRevisionRequest('');
+      setTimeout(() => {
+        resultScrollRef.current?.scrollTo({ y: 0, animated: true });
+      }, 120);
+    } else if (revisionPendingRef.current && state.pending?.status === 'failed') {
+      revisionPendingRef.current = false;
+      revisionPendingSeenRef.current = false;
+    }
+  }, [research?.essay]);
+
   useEffect(() => {
     setDraftText(essays[activeIdx]?.draft || '');
-    setRevisionRequest('');
-    setCopied(false);
-    setError('');
-  }, [activeIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeIdx, essays]);
 
-  const persistAll = (nextQ, nextE) => {
-    const hasDraft = nextE.some(e => e?.draft);
+  useEffect(() => {
+    resumeWriteTask?.(companyId);
+  }, [companyId, research?.essay?.pending?.requestedAt, research?.essay?.pending?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    if (!research?.researchReport || loading) return undefined;
+
+    const serializedQuestions = JSON.stringify(questions);
+    if (!autosaveReadyRef.current) {
+      autosaveReadyRef.current = true;
+      lastAutosavedQuestionsRef.current = serializedQuestions;
+      return undefined;
+    }
+    if (!shouldAutosaveWriteQuestions({
+      serializedQuestions,
+      lastSerializedQuestions: lastAutosavedQuestionsRef.current,
+      loading,
+      hasTemporaryQuestions: hasTemporaryWriteQuestions(questions, essays),
+      isEditingQuestions: editingQuestionsRef.current,
+    })) return undefined;
+
+    autosaveTimerRef.current = setTimeout(() => {
+      const nextEssayState = buildWriteState({
+        previousState: research?.essay,
+        questions,
+        essays,
+        pending: null,
+      });
+      lastAutosavedQuestionsRef.current = serializedQuestions;
+      updateResearch(companyId, { essay: nextEssayState });
+      autosaveTimerRef.current = null;
+    }, 800);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [companyId, essays, loading, questions, research?.essay, research?.researchReport, updateResearch]);
+
+  const scrollInputTo = (y, offset = 24) => {
+    setTimeout(() => {
+      inputScrollRef.current?.scrollTo({
+        y: Math.max(y - offset, 0),
+        animated: true,
+      });
+    }, 80);
+  };
+
+  const scrollResultTo = (y, offset = 24) => {
+    setTimeout(() => {
+      resultScrollRef.current?.scrollTo({
+        y: Math.max(y - offset, 0),
+        animated: true,
+      });
+    }, 80);
+  };
+
+  const persistAll = (nextQuestions, nextEssays) => {
+    const hasDraft = nextEssays.some(essay => essay?.draft);
+    const nextEssayState = buildWriteState({
+      previousState: research?.essay,
+      questions: nextQuestions,
+      essays: nextEssays,
+      pending: null,
+    });
+    savedWriteStateRef.current = nextEssayState;
+
     updateResearch(companyId, {
-      questions: nextQ,
-      essays: nextE,
+      essay: nextEssayState,
       ...(hasDraft
         ? {
-            pipeline: ['done', 'done', 'done'],
+            pipeline: PIPELINE_COMPLETE,
             completedSteps: Math.max(research?.completedSteps ?? 0, 3),
           }
         : {}),
@@ -103,163 +266,167 @@ export default function WriteScreen({ navigation, route, researches, updateResea
 
   const addQuestion = () => {
     setQuestions(prev => [...prev, { id: makeId(), questionText: '', targetLength: '' }]);
-    setEssays(prev => [...prev, null]);
+    setActiveIdx(questions.length);
   };
 
   const removeQuestion = (idx) => {
     if (questions.length <= 1) return;
-    const nextQ = questions.filter((_, i) => i !== idx);
-    const nextE = essays.filter((_, i) => i !== idx);
-    setQuestions(nextQ);
-    setEssays(nextE);
+    const removedQuestionId = questions[idx]?.id;
+    const nextQuestions = questions.filter((_, index) => index !== idx);
+    const nextEssays = essays.filter((_, index) => index !== idx);
+    setQuestions(nextQuestions);
+    setEssays(nextEssays);
+
+    const savedState = savedWriteStateRef.current;
+    const savedIndex = savedState.questions.findIndex(question => question.id === removedQuestionId);
+    if (savedIndex >= 0) {
+      const savedQuestions = savedState.questions.filter((_, index) => index !== savedIndex);
+      const savedEssays = savedState.essays.filter((_, index) => index !== savedIndex);
+      const nextSavedState = buildWriteState({
+        previousState: savedState,
+        questions: savedQuestions,
+        essays: savedEssays,
+        pending: null,
+      });
+      savedWriteStateRef.current = nextSavedState;
+      lastAutosavedQuestionsRef.current = JSON.stringify(nextSavedState.questions);
+      suppressNextResearchSyncRef.current = true;
+      const hasDraft = savedEssays.some(essay => essay?.draft);
+      updateResearch(companyId, {
+        essay: nextSavedState,
+        ...(hasDraft
+          ? {
+              pipeline: PIPELINE_COMPLETE,
+              completedSteps: Math.max(research?.completedSteps ?? 0, 3),
+            }
+          : {}),
+      });
+    }
     if (activeIdx >= idx && activeIdx > 0) setActiveIdx(prev => prev - 1);
   };
 
-  const handleGenerateAll = async () => {
-    const hasValid = questions.some(q => q.questionText.trim());
-    if (!hasValid || loading) return;
-
-    // 입력 화면에서 그대로 생성 시작 (stage 전환 없음)
-    setLoading(true);
-    setGeneratingIdx(0);
-    setError('');
-
-    const nextEssays = [...essays];
-
-    for (let idx = 0; idx < questions.length; idx++) {
-      const q = questions[idx];
-      if (!q.questionText.trim() || nextEssays[idx]?.draft) continue;
-
-      setGeneratingIdx(idx);
-
-      try {
-        const result = await generateEssayDraft({
-          questionText: q.questionText.trim(),
-          targetLength: q.targetLength.trim(),
-          researchReport: report,
-          debateMessages,
-          userExperiences: user?.experiences ?? [],
-        });
-        nextEssays[idx] = buildEssayPayload({
-          questionText: q.questionText.trim(),
-          targetLength: q.targetLength,
-          draft: result.draft,
-          evidenceSummary: result.evidenceSummary,
-        });
-        setEssays([...nextEssays]);
-      } catch (err) {
-        console.warn(`generateEssayDraft error q${idx + 1}:`, err.message);
-        setError(`문항 ${idx + 1} 생성 실패. 잠시 후 다시 시도해 주세요.`);
-      }
-    }
-
-    setGeneratingIdx(-1);
-    setLoading(false);
-    setActiveIdx(0);
-    setDraftText(nextEssays[0]?.draft || '');
-    persistAll(questions, nextEssays);
-
-    // 모든 생성 완료 후 결과 화면으로 전환
-    if (nextEssays.some(e => e?.draft)) {
-      setStage('result');
-    }
+  const confirmRemoveQuestion = (idx) => {
+    if (questions.length <= 1 || loading) return;
+    Alert.alert(
+      '문항을 삭제하시겠습니까?',
+      '삭제한 문항과 해당 초안은 복구할 수 없습니다.',
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => removeQuestion(idx) },
+      ],
+    );
   };
 
-  const handleGenerate = async () => {
-    const q = questions[activeIdx];
-    const trimmedQuestion = q?.questionText.trim();
-    if (!trimmedQuestion || loading) return;
+  const handleReturnToEssayBox = () => {
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const savedState = savedWriteStateRef.current;
+    const nextActiveIdx = Math.min(activeIdx, Math.max(savedState.questions.length - 1, 0));
+    editingQuestionsRef.current = false;
+    setQuestions(savedState.questions);
+    setEssays(savedState.essays);
+    setActiveIdx(nextActiveIdx);
+    setDraftText(savedState.essays[nextActiveIdx]?.draft || '');
+    lastAutosavedQuestionsRef.current = JSON.stringify(savedState.questions);
+    setStage('result');
+  };
 
+  const getCurrentWriteState = (nextEssays = essays) =>
+    buildWriteState({
+      previousState: research?.essay,
+      questions,
+      essays: nextEssays,
+    });
+
+  const handleGenerateAll = () => {
+    if (questions.every(q => !q.questionText.trim()) || loading) return;
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const state = getCurrentWriteState();
+    lastAutosavedQuestionsRef.current = JSON.stringify(state.questions);
+    generateAllPendingRef.current = true;
+    editingQuestionsRef.current = false;
+    setStage('input');
     setLoading(true);
     setError('');
-    setCopied(false);
+    startWriteGenerateAll?.(companyId, state.questions, state.essays);
+  };
 
-    try {
-      const result = await generateEssayDraft({
-        questionText: trimmedQuestion,
-        targetLength: q.targetLength.trim(),
-        researchReport: report,
-        debateMessages,
-        userExperiences: user?.experiences ?? [],
-      });
-      const nextEssay = buildEssayPayload({
-        questionText: trimmedQuestion,
-        targetLength: q.targetLength,
-        draft: result.draft,
-        evidenceSummary: result.evidenceSummary,
-      });
-      const nextEssays = [...essays];
-      nextEssays[activeIdx] = nextEssay;
-      setEssays(nextEssays);
-      setDraftText(nextEssay.draft);
-      persistAll(questions, nextEssays);
-    } catch (err) {
-      console.warn('generateEssayDraft error:', err.message);
-      setError('초안 생성에 실패했어요. 잠시 후 다시 시도해 주세요.');
-    } finally {
-      setLoading(false);
+  const handleGenerate = () => {
+    const question = questions[activeIdx];
+    if (!question?.questionText.trim() || loading) return;
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
     }
+    const state = getCurrentWriteState();
+    lastAutosavedQuestionsRef.current = JSON.stringify(state.questions);
+    editingQuestionsRef.current = false;
+    updateResearch(companyId, { essay: state });
+    setLoading(true);
+    setError('');
+    startWriteGenerateOne?.(companyId, state.questions, state.essays, activeIdx);
   };
 
   const handleSaveDraft = () => {
     const essay = essays[activeIdx];
     if (!essay) return;
-    const nextEssay = buildEssayPayload({
-      ...essay,
-      questionText: questions[activeIdx].questionText,
-      targetLength: questions[activeIdx].targetLength,
-      draft: draftText,
-    });
+
+    const nextEssay = applyEssayRevision(
+      {
+        ...essay,
+        questionText: questions[activeIdx].questionText,
+        targetLength: questions[activeIdx].targetLength,
+      },
+      draftText,
+    );
     const nextEssays = [...essays];
     nextEssays[activeIdx] = nextEssay;
     setEssays(nextEssays);
-    setCopied(false);
     persistAll(questions, nextEssays);
   };
 
-  const handleRevise = async () => {
+  const handleRevise = () => {
     const request = revisionRequest.trim();
     const essay = essays[activeIdx];
-    const q = questions[activeIdx];
     if (!essay || !draftText.trim() || !request || loading) return;
 
+    const nextEssays = [...essays];
+    nextEssays[activeIdx] = buildEssayPayload({ ...essay, draft: draftText });
+    const state = getCurrentWriteState(nextEssays);
+
+    revisionPendingRef.current = true;
+    revisionPendingSeenRef.current = false;
+    updateResearch(companyId, { essay: state });
+    setEssays(nextEssays);
     setLoading(true);
     setError('');
-    setCopied(false);
-
-    try {
-      const result = await reviseEssayDraft({
-        questionText: q.questionText.trim() || essay.questionText,
-        targetLength: q.targetLength.trim() || essay.targetLength,
-        currentDraft: draftText,
-        revisionRequest: request,
-        researchReport: report,
-        debateMessages,
-        userExperiences: user?.experiences ?? [],
-      });
-      const revised = applyEssayRevision(
-        { ...essay, questionText: q.questionText, targetLength: q.targetLength, draft: draftText },
-        result.draft,
-      );
-      const nextEssay = buildEssayPayload({ ...revised, evidenceSummary: result.evidenceSummary });
-      const nextEssays = [...essays];
-      nextEssays[activeIdx] = nextEssay;
-      setEssays(nextEssays);
-      setDraftText(nextEssay.draft);
-      setRevisionRequest('');
-      persistAll(questions, nextEssays);
-    } catch (err) {
-      console.warn('reviseEssayDraft error:', err.message);
-      setError('AI 수정에 실패했어요. 요청을 조금 더 짧게 바꿔 다시 시도해 주세요.');
-    } finally {
-      setLoading(false);
-    }
+    startWriteRevise?.(companyId, state.questions, state.essays, activeIdx, draftText, request);
   };
 
   const handleUndo = () => {
     const essay = essays[activeIdx];
     if (!essay?.previousDraft) return;
+
     const nextEssay = undoEssayRevision(essay);
+    const nextEssays = [...essays];
+    nextEssays[activeIdx] = nextEssay;
+    setEssays(nextEssays);
+    setDraftText(nextEssay.draft);
+    persistAll(questions, nextEssays);
+  };
+
+  const handleRedo = () => {
+    const essay = essays[activeIdx];
+    if (!essay?.redoDraft) return;
+
+    const nextEssay = redoEssayRevision(essay);
     const nextEssays = [...essays];
     nextEssays[activeIdx] = nextEssay;
     setEssays(nextEssays);
@@ -270,23 +437,26 @@ export default function WriteScreen({ navigation, route, researches, updateResea
   const handleCopy = async () => {
     const essay = essays[activeIdx];
     if (!essay?.draft) return;
-    const text = buildEssayShareText({
-      companyName,
-      essay: { ...essay, questionText: questions[activeIdx].questionText, draft: draftText },
-    });
-    await Clipboard.setStringAsync(text);
-    setCopied(true);
+
+    await Clipboard.setStringAsync(
+      buildEssayShareText({
+        companyName,
+        essay: { ...essay, questionText: questions[activeIdx].questionText, draft: draftText },
+      }),
+    );
   };
 
   const handleShare = async () => {
     const essay = essays[activeIdx];
     if (!essay?.draft) return;
-    const text = buildEssayShareText({
-      companyName,
-      essay: { ...essay, questionText: questions[activeIdx].questionText, draft: draftText },
-    });
+
     try {
-      await Share.share({ message: text });
+      await Share.share({
+        message: buildEssayShareText({
+          companyName,
+          essay: { ...essay, questionText: questions[activeIdx].questionText, draft: draftText },
+        }),
+      });
     } catch (err) {
       console.warn('Share essay error:', err.message);
     }
@@ -294,17 +464,34 @@ export default function WriteScreen({ navigation, route, researches, updateResea
 
   const activeEssay = essays[activeIdx] ?? null;
   const activeQuestion = questions[activeIdx] ?? questions[0];
+  const activeLengthTarget = getEssayLengthTarget(activeQuestion?.targetLength);
+  const draftCharCount = countEssayChars(draftText);
   const dirty = Boolean(activeEssay && draftText !== activeEssay.draft);
   const canGenerate = Boolean(activeQuestion?.questionText.trim()) && !loading;
   const canRevise = Boolean(activeEssay?.draft && revisionRequest.trim() && !loading);
+  const currentPending = research?.essay?.pending;
+  const generatingAllInProgress = Boolean(
+    generateAllPendingRef.current
+    || (currentPending?.status === 'pending' && currentPending?.type === 'generateAll')
+  );
+  const canReturnToEssayBox = Boolean(
+    editingQuestionsRef.current
+    && !loading
+    && !generatingAllInProgress
+    && hasAllRequiredEssaysComplete(savedWriteStateRef.current.questions, savedWriteStateRef.current.essays)
+  );
+  const shouldShowInputStage = stage === 'input' || generatingAllInProgress;
 
-  // ─────────────────────────────────────────
-  // INPUT STAGE
-  // ─────────────────────────────────────────
-  if (stage === 'input') {
+  if (shouldShowInputStage) {
     return (
-      <SafeAreaView style={s.root}>
+      <SafeAreaView style={s.root} edges={['top']}>
+        <KeyboardAvoidingView
+          style={s.keyboard}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
         <ScrollView
+          ref={inputScrollRef}
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -314,58 +501,77 @@ export default function WriteScreen({ navigation, route, researches, updateResea
               <Ionicons name="arrow-back" size={20} color={t.ink} />
             </TouchableOpacity>
             <Text style={s.tag}>WRITE · 자소서</Text>
+            {canReturnToEssayBox ? (
+              <TouchableOpacity onPress={handleReturnToEssayBox} activeOpacity={0.75}>
+                <Text style={s.editQText}>자소서함</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           <Text style={s.title}>{companyName} 자소서</Text>
-          <Text style={s.sub}>지원서 문항을 입력하면 AI가 맞춤 초안을 작성합니다</Text>
+          <Text style={s.sub}>지원서 문항과 글자 수를 입력하면 AI가 맞춤 초안을 작성합니다.</Text>
 
-          {questions.map((q, idx) => (
-            <View key={q.id} style={s.questionCard}>
+          {questions.map((question, idx) => (
+            <View
+              key={question.id}
+              style={s.questionCard}
+              onLayout={event => { questionYRef.current[idx] = event.nativeEvent.layout.y; }}
+            >
               <View style={s.questionCardHeader}>
                 <View style={s.qNumBadge}>
                   <Text style={s.qNumText}>{idx + 1}</Text>
                 </View>
                 <Text style={s.qCardTitle}>문항 {idx + 1}</Text>
-                {essays[idx]?.draft && (
-                  <View style={s.draftDoneChip}>
-                    <Ionicons name="checkmark-circle" size={13} color={t.primary} />
-                    <Text style={s.draftDoneText}>초안 완료</Text>
-                  </View>
-                )}
-                {questions.length > 1 && (
+                {questions.length > 1 ? (
                   <TouchableOpacity
-                    style={s.deleteBtn}
-                    onPress={() => removeQuestion(idx)}
+                    style={[s.deleteBtn, loading && { opacity: 0.35 }]}
+                    onPress={() => confirmRemoveQuestion(idx)}
                     activeOpacity={0.7}
+                    disabled={loading}
                   >
                     <Ionicons name="close" size={16} color={t.muted} />
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
 
               <TextInput
                 style={[s.inputBox, s.questionInput]}
-                value={q.questionText}
-                onChangeText={(v) => updateQuestion(idx, 'questionText', v)}
-                placeholder="지원서에 있는 문항을 그대로 붙여넣어 주세요"
+                value={question.questionText}
+                onChangeText={value => updateQuestion(idx, 'questionText', value)}
+                onFocus={() => {
+                  focusedQuestionIdxRef.current = idx;
+                  scrollInputTo(questionYRef.current[idx] || 0);
+                }}
+                onContentSizeChange={event => {
+                  if (focusedQuestionIdxRef.current === idx) {
+                    scrollInputTo(
+                      (questionYRef.current[idx] || 0) + event.nativeEvent.contentSize.height,
+                      260,
+                    );
+                  }
+                }}
+                placeholder="지원서에 있는 문항을 그대로 붙여 넣어 주세요"
                 placeholderTextColor={t.faint}
                 multiline
                 maxLength={2000}
+                editable={!loading}
               />
 
               <TextInput
                 style={s.charLimitInput}
-                value={q.targetLength}
-                onChangeText={(v) => updateQuestion(idx, 'targetLength', v.replace(/[^0-9]/g, ''))}
+                value={question.targetLength}
+                onChangeText={value => updateQuestion(idx, 'targetLength', value.replace(/[^0-9]/g, ''))}
+                onFocus={() => scrollInputTo(questionYRef.current[idx] || 0)}
                 placeholder="글자 수 제한"
                 placeholderTextColor={t.faint}
                 keyboardType="numeric"
                 maxLength={6}
+                editable={!loading}
               />
             </View>
           ))}
 
-          <TouchableOpacity style={s.addQuestionBtn} onPress={addQuestion} activeOpacity={0.75}>
+          <TouchableOpacity style={[s.addQuestionBtn, loading && s.btnDisabled]} onPress={addQuestion} activeOpacity={0.75} disabled={loading}>
             <Ionicons name="add-circle-outline" size={18} color={t.primary} />
             <Text style={s.addQuestionText}>문항 추가</Text>
           </TouchableOpacity>
@@ -373,7 +579,10 @@ export default function WriteScreen({ navigation, route, researches, updateResea
           {error ? <Text style={s.errorText}>{error}</Text> : null}
 
           <TouchableOpacity
-            style={[s.primaryBtn, (questions.every(q => !q.questionText.trim()) || loading) && s.btnDisabled]}
+            style={[
+              s.primaryBtn,
+              (questions.every(q => !q.questionText.trim()) || loading) && s.btnDisabled,
+            ]}
             onPress={handleGenerateAll}
             activeOpacity={0.85}
             disabled={questions.every(q => !q.questionText.trim()) || loading}
@@ -381,9 +590,7 @@ export default function WriteScreen({ navigation, route, researches, updateResea
             {loading ? (
               <>
                 <ActivityIndicator size="small" color="#fff" />
-                <Text style={s.primaryBtnText}>
-                  문항 {generatingIdx + 1}/{questions.length} 생성 중...
-                </Text>
+                <Text style={s.primaryBtnText}>자소서 초안 작성중</Text>
               </>
             ) : (
               <>
@@ -393,16 +600,20 @@ export default function WriteScreen({ navigation, route, researches, updateResea
             )}
           </TouchableOpacity>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  // ─────────────────────────────────────────
-  // RESULT STAGE
-  // ─────────────────────────────────────────
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaView style={s.root} edges={['top']}>
+      <KeyboardAvoidingView
+        style={s.keyboard}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
       <ScrollView
+        ref={resultScrollRef}
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -412,47 +623,42 @@ export default function WriteScreen({ navigation, route, researches, updateResea
             <Ionicons name="arrow-back" size={20} color={t.ink} />
           </TouchableOpacity>
           <Text style={s.tag}>WRITE · 자소서</Text>
-          {essays.some(e => e?.draft) && (
-            <View style={s.savedChip}>
-              <Text style={s.savedChipText}>저장됨</Text>
-            </View>
-          )}
-          <TouchableOpacity onPress={() => setStage('input')} activeOpacity={0.75}>
+          <TouchableOpacity
+            onPress={() => {
+              editingQuestionsRef.current = true;
+              setStage('input');
+            }}
+            activeOpacity={0.75}
+          >
             <Text style={s.editQText}>문항 편집</Text>
           </TouchableOpacity>
         </View>
 
         <Text style={s.title}>{companyName} 자소서</Text>
 
-        {/* 문항 탭 */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={s.tabsScroll}
           contentContainerStyle={s.tabsContainer}
         >
-          {questions.map((q, idx) => (
+          {questions.map((question, idx) => (
             <TouchableOpacity
-              key={q.id}
+              key={question.id}
               style={[s.tab, activeIdx === idx && s.tabActive]}
               onPress={() => setActiveIdx(idx)}
               activeOpacity={0.75}
             >
-              {essays[idx]?.draft && <View style={s.tabDot} />}
-              <Text style={[s.tabText, activeIdx === idx && s.tabTextActive]}>
-                문항 {idx + 1}
-              </Text>
+              {essays[idx]?.draft ? <View style={s.tabDot} /> : null}
+              <Text style={[s.tabText, activeIdx === idx && s.tabTextActive]}>문항 {idx + 1}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* 선택된 문항 */}
         <View style={s.questionBox}>
           <Text style={s.questionBoxLabel}>QUESTION {activeIdx + 1}</Text>
-          <Text style={s.questionBoxText}>
-            {activeQuestion.questionText || '문항을 입력해 주세요'}
-          </Text>
-          {activeQuestion.targetLength ? (
+          <Text style={s.questionBoxText}>{activeQuestion?.questionText || '문항을 입력해 주세요'}</Text>
+          {activeQuestion?.targetLength ? (
             <Text style={s.targetLengthText}>{activeQuestion.targetLength}자 이내</Text>
           ) : null}
         </View>
@@ -479,30 +685,56 @@ export default function WriteScreen({ navigation, route, researches, updateResea
           </View>
         ) : (
           <>
-            <Text style={s.label}>초안</Text>
+            <View
+              style={s.draftHeaderRow}
+              onLayout={event => { draftYRef.current = event.nativeEvent.layout.y; }}
+            >
+              <Text style={[s.label, s.draftLabel]}>초안</Text>
+              <View style={s.draftHeaderActions}>
+                <TouchableOpacity
+                  style={[s.iconBtn, !activeEssay.previousDraft && s.iconBtnDisabled]}
+                  onPress={handleUndo}
+                  activeOpacity={0.75}
+                  disabled={!activeEssay.previousDraft}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="return-up-back" size={18} color={t.ink} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.iconBtn, !activeEssay.redoDraft && s.iconBtnDisabled]}
+                  onPress={handleRedo}
+                  activeOpacity={0.75}
+                  disabled={!activeEssay.redoDraft}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="return-up-forward" size={18} color={t.ink} />
+                </TouchableOpacity>
+              </View>
+            </View>
             <TextInput
               style={[s.inputBox, s.draftInput]}
               value={draftText}
-              onChangeText={(text) => {
-                setDraftText(text);
-                setCopied(false);
-              }}
+              onChangeText={setDraftText}
               multiline
               textAlignVertical="top"
-              maxLength={6000}
+              maxLength={activeLengthTarget?.limit ?? 6000}
             />
 
             <View style={s.metaRow}>
-              <Text style={s.charCount}>총 {draftText.length}자</Text>
-              {dirty && (
+              <Text style={s.charCount}>
+                {activeLengthTarget
+                  ? `${draftCharCount} / ${activeLengthTarget.limit}자`
+                  : `총 ${draftCharCount}자`}
+              </Text>
+              {dirty ? (
                 <TouchableOpacity style={s.saveInlineBtn} onPress={handleSaveDraft} activeOpacity={0.75}>
                   <Ionicons name="save-outline" size={14} color={t.primary} />
                   <Text style={s.saveInlineText}>수정 저장</Text>
                 </TouchableOpacity>
-              )}
+              ) : null}
             </View>
 
-            {activeEssay.evidenceSummary?.length > 0 && (
+            {activeEssay.evidenceSummary?.length > 0 ? (
               <View style={s.citationCard}>
                 <Text style={s.citationLabel}>반영 근거</Text>
                 {activeEssay.evidenceSummary.map((item, index) => (
@@ -512,17 +744,19 @@ export default function WriteScreen({ navigation, route, researches, updateResea
                   </View>
                 ))}
               </View>
-            )}
+            ) : null}
 
-            <View style={s.revisionCard}>
+            <View
+              style={s.revisionCard}
+              onLayout={event => { revisionYRef.current = event.nativeEvent.layout.y; }}
+            >
               <Text style={s.label}>AI에게 수정 요청</Text>
               <View style={s.revisionRow}>
                 <TextInput
                   style={s.revisionInput}
                   value={revisionRequest}
                   onChangeText={setRevisionRequest}
-                  placeholder="예: 700자로 줄이고 직무 연결을 강화해줘"
-                  placeholderTextColor={t.faint}
+                  onFocus={() => scrollResultTo(revisionYRef.current || 0)}
                   multiline
                   maxLength={1000}
                   editable={!loading}
@@ -544,27 +778,6 @@ export default function WriteScreen({ navigation, route, researches, updateResea
             </View>
 
             <View style={s.actions}>
-              <TouchableOpacity
-                style={s.secondaryBtn}
-                onPress={handleGenerate}
-                activeOpacity={0.8}
-                disabled={loading}
-              >
-                <Ionicons name="refresh" size={16} color={t.ink} />
-                <Text style={s.secondaryBtnText}>다시 생성</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.secondaryBtn, !activeEssay.previousDraft && s.btnDisabled]}
-                onPress={handleUndo}
-                activeOpacity={0.8}
-                disabled={!activeEssay.previousDraft}
-              >
-                <Ionicons name="return-up-back" size={16} color={t.ink} />
-                <Text style={s.secondaryBtnText}>되돌리기</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={s.actions}>
               <TouchableOpacity style={s.secondaryBtn} onPress={handleCopy} activeOpacity={0.8}>
                 <Ionicons name="copy-outline" size={16} color={t.ink} />
                 <Text style={s.secondaryBtnText}>복사</Text>
@@ -577,13 +790,15 @@ export default function WriteScreen({ navigation, route, researches, updateResea
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: t.bg },
-  scroll: { paddingHorizontal: 20, paddingBottom: 40 },
+  keyboard: { flex: 1 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 180 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -593,22 +808,30 @@ const s = StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   tag: { flex: 1, fontSize: 10, fontWeight: '700', color: t.primary, letterSpacing: 1.2 },
-  savedChip: {
-    paddingHorizontal: 10,
-    height: 22,
-    borderRadius: 999,
-    backgroundColor: t.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  savedChipText: { fontSize: 11, fontWeight: '600', color: t.primary },
   editQText: { fontSize: 12, fontWeight: '700', color: t.primary },
   title: { fontSize: 22, fontWeight: '700', color: t.ink, marginBottom: 6 },
   sub: { fontSize: 12, color: t.muted, lineHeight: 18, marginBottom: 20 },
-  section: { gap: 10 },
   label: { fontSize: 12, fontWeight: '700', color: t.muted, marginBottom: 8 },
-
-  // 문항 카드 (input stage)
+  draftHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 8,
+  },
+  draftLabel: { marginBottom: 0 },
+  draftHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: t.surface,
+    borderWidth: 1,
+    borderColor: t.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBtnDisabled: { opacity: 0.35 },
   questionCard: {
     backgroundColor: t.surface,
     borderRadius: 16,
@@ -633,14 +856,7 @@ const s = StyleSheet.create({
   },
   qNumText: { fontSize: 12, fontWeight: '700', color: '#fff' },
   qCardTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: t.ink },
-  draftDoneChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  draftDoneText: { fontSize: 11, fontWeight: '600', color: t.primary },
   deleteBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-
   inputBox: {
     backgroundColor: t.bg,
     borderRadius: 12,
@@ -664,7 +880,6 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: t.ink,
   },
-
   addQuestionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -678,7 +893,6 @@ const s = StyleSheet.create({
     marginBottom: 16,
   },
   addQuestionText: { fontSize: 14, fontWeight: '600', color: t.primary },
-
   primaryBtn: {
     height: 52,
     borderRadius: 14,
@@ -692,8 +906,6 @@ const s = StyleSheet.create({
   primaryBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
   btnDisabled: { opacity: 0.45 },
   errorText: { fontSize: 12, color: t.danger, lineHeight: 18, marginBottom: 10 },
-
-  // 탭 (result stage)
   tabsScroll: { marginBottom: 14 },
   tabsContainer: { gap: 8, paddingBottom: 2 },
   tab: {
@@ -707,20 +919,10 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: t.border,
   },
-  tabActive: {
-    backgroundColor: t.primarySoft,
-    borderColor: t.primary,
-  },
-  tabDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: t.primary,
-  },
+  tabActive: { backgroundColor: t.primarySoft, borderColor: t.primary },
+  tabDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: t.primary },
   tabText: { fontSize: 13, fontWeight: '600', color: t.muted },
   tabTextActive: { color: t.primary },
-
-  // 문항 박스 (result stage)
   questionBox: {
     backgroundColor: t.primarySoft,
     borderRadius: 14,
@@ -728,15 +930,9 @@ const s = StyleSheet.create({
     marginBottom: 16,
     gap: 6,
   },
-  questionBoxLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: t.primary,
-    letterSpacing: 0.8,
-  },
+  questionBoxLabel: { fontSize: 11, fontWeight: '700', color: t.primary, letterSpacing: 0.8 },
   questionBoxText: { fontSize: 13, color: t.ink, lineHeight: 20 },
   targetLengthText: { fontSize: 11, color: t.muted },
-
   draftInput: { minHeight: 280, textAlignVertical: 'top' },
   metaRow: {
     flexDirection: 'row',
@@ -746,13 +942,7 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
   charCount: { fontSize: 11, color: t.faint },
-  saveInlineBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    height: 28,
-  },
+  saveInlineBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 28 },
   saveInlineText: { fontSize: 12, fontWeight: '700', color: t.primary },
   citationCard: {
     backgroundColor: t.surface,
@@ -762,13 +952,7 @@ const s = StyleSheet.create({
     padding: 14,
     marginBottom: 14,
   },
-  citationLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: t.primary,
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
+  citationLabel: { fontSize: 11, fontWeight: '700', color: t.primary, letterSpacing: 0.8, marginBottom: 8 },
   evidenceRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
   evidenceDot: { color: t.primary, fontSize: 13, lineHeight: 20 },
   evidenceText: { flex: 1, minWidth: 0, fontSize: 12, color: t.inkSoft, lineHeight: 20 },
@@ -829,21 +1013,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
   },
   darkBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
-  copiedText: { fontSize: 12, color: t.primary, textAlign: 'center', marginTop: 2 },
-  progressCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: t.primarySoft,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 14,
-  },
-  progressText: { fontSize: 13, fontWeight: '600', color: t.primary },
-  emptyDraftBox: {
-    gap: 12,
-    paddingVertical: 8,
-  },
+  emptyDraftBox: { gap: 12, paddingVertical: 8 },
   emptyDraftText: { fontSize: 13, color: t.muted, textAlign: 'center' },
 });
