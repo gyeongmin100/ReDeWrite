@@ -6,13 +6,9 @@
 
 ## 🎬 시연 영상
 
-**[▶ 시연 영상 보기 (docs/시연영상.mp4)](docs/시연영상.mp4)**
-
 https://github.com/user-attachments/assets/f93df9a1-ce24-4c72-81a0-0023ce78b756
 
-
-
-> 링크를 클릭하면 GitHub 내장 플레이어로 바로 재생됩니다.
+> 원본 파일: [docs/시연영상.mp4](docs/시연영상.mp4)
 
 ## 서비스 정의
 
