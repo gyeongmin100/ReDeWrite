@@ -28,13 +28,13 @@ https://github.com/user-attachments/assets/f93df9a1-ce24-4c72-81a0-0023ce78b756
 
 ## 기술 스택
 
-| 구성 요소 | 역할 |
-|---|---|
-| **React Native (Expo 54)** | 앱 화면·UI 개발. 안드로이드/iOS 앱을 하나의 코드로 제작 |
-| **OpenAI API** | 리서치 요약, 토론 답변, 자소서 초안 등 실제 AI 응답 생성 |
-| **Vercel (`worker/`)** | 앱과 OpenAI 사이 중계 서버. API 키를 앱에 노출하지 않고 서버가 대신 OpenAI 호출 |
-| **Supabase** | Google 로그인 인증 + 사용자별 데이터(스펙, 리서치, 자소서) 저장 |
-| **Gradle 로컬 빌드** | Expo 환경에서 APK/AAB 설치 파일로 직접 빌드 |
+| 구분 | 기술 | 용도 |
+|---|---|---|
+| App | React Native (Expo 54) | 안드로이드 앱 UI 및 화면 구성 |
+| AI | OpenAI API | 기업 리서치, 토론, 자소서 초안 생성 |
+| Backend | Vercel Serverless Functions | AI API 중계 서버 (`worker/`) |
+| Auth / DB | Supabase | Google 로그인, 사용자 데이터 저장 |
+| Build | Expo + Gradle (로컬 빌드) | Expo 환경에서 APK / AAB 패키징 |
 
 ## 프로젝트 구조
 
